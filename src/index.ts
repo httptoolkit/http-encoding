@@ -11,7 +11,7 @@ export type SUPPORTED_ENCODING =
     | 'x-deflate'
     | 'br'
     | 'zstd'
-    | 'amz-1.0'
+    | 'amz-1.0';
 
 export const gzip = promisify(zlib.gzip);
 export const gunzip = promisify(zlib.gunzip);
@@ -25,14 +25,14 @@ export const brotliCompress = zlib.brotliCompress
     ? promisify(zlib.brotliCompress)
     : (async (buffer: Uint8Array, _unusedOpts: zlib.BrotliOptions): Promise<Uint8Array> => {
         const { compress } = await importWasmBrotli();
-        return Buffer.from(await compress(buffer));
+        return compress(buffer);
     });
 
 export const brotliDecompress = zlib.brotliDecompress
     ? promisify(zlib.brotliDecompress)
     : (async (buffer: Uint8Array): Promise<Uint8Array> => {
         const { decompress } = await importWasmBrotli();
-        return Buffer.from(await decompress(buffer));
+        return decompress(buffer);
     });
 
 // Zstd is a non-built-in wasm implementation that initializes async. We
@@ -45,7 +45,7 @@ export const zstdCompress = async (buffer: Uint8Array, level?: number): Promise<
         }));
     }
 
-    return Buffer.from(await (await zstd).compress(buffer, level));
+    return (await zstd).compress(buffer, level);
 };
 
 export const zstdDecompress = async (buffer: Uint8Array): Promise<Uint8Array> => {
@@ -55,7 +55,16 @@ export const zstdDecompress = async (buffer: Uint8Array): Promise<Uint8Array> =>
         }));
     }
 
-    return Buffer.from(await (await zstd).decompress(buffer));
+    return (await zstd).decompress(buffer);
+};
+
+const asBuffer = (input: Buffer | Uint8Array): Buffer => {
+    if (Buffer.isBuffer(input)) {
+        return input;
+    } else {
+        // Offset & length allow us to support all sorts of buffer views:
+        return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+    }
 };
 
 /**
@@ -64,14 +73,14 @@ export const zstdDecompress = async (buffer: Uint8Array): Promise<Uint8Array> =>
  *
  * Throws if any unrecognized/unavailable content-encoding is found.
  */
-export async function decodeBuffer(body: Uint8Array, encoding: string | string[] | undefined): Promise<Uint8Array> {
+export async function decodeBuffer(body: Uint8Array, encoding: string | string[] | undefined): Promise<Buffer> {
     if (Array.isArray(encoding) || (typeof encoding === 'string' && encoding.indexOf(', ') >= 0)) {
         const encodings = typeof encoding === 'string' ? encoding.split(', ').reverse() : encoding;
         return encodings.reduce<Promise<Uint8Array>>((contentPromise, nextEncoding) => {
             return contentPromise.then((content) =>
                 decodeBuffer(content, nextEncoding)
             );
-        }, Promise.resolve(body));
+        }, Promise.resolve(body)) as Promise<Buffer>;
     }
 
     if (encoding === 'gzip' || encoding === 'x-gzip') {
@@ -87,15 +96,15 @@ export async function decodeBuffer(body: Uint8Array, encoding: string | string[]
             return inflateRaw(body);
         }
     } else if (encoding === 'br') {
-        return brotliDecompress(body);
+        return asBuffer(await brotliDecompress(body));
     } else if (encoding === 'zstd' && ZstdCodec) {
-        return zstdDecompress(body);
+        return asBuffer(await zstdDecompress(body));
     } else if (encoding === 'amz-1.0') {
         // Weird encoding used by some AWS requests, actually just unencoded JSON:
         // https://docs.aws.amazon.com/en_us/AmazonCloudWatch/latest/APIReference/making-api-requests.html
-        return body;
+        return asBuffer(body);
     } else if (!encoding || encoding === 'identity') {
-        return body;
+        return asBuffer(body);
     } else {
         throw new Error(`Unknown encoding: ${encoding}`);
     }
@@ -109,7 +118,7 @@ export async function decodeBuffer(body: Uint8Array, encoding: string | string[]
  */
  export async function encodeBuffer(body: Uint8Array, encoding: SUPPORTED_ENCODING, options: {
     level?: number
- } = {}): Promise<Uint8Array> {
+ } = {}): Promise<Buffer> {
     const level = options.level ?? 4;
 
     if (encoding === 'gzip' || encoding === 'x-gzip') {
@@ -117,15 +126,15 @@ export async function decodeBuffer(body: Uint8Array, encoding: string | string[]
     } else if (encoding === 'deflate' || encoding === 'x-deflate') {
         return deflate(body, { level });
     } else if (encoding === 'br') {
-        return Buffer.from(await brotliCompress(body, zlib.constants ? {
+        return asBuffer(await brotliCompress(body, zlib.constants ? {
             params: {
                 [zlib.constants.BROTLI_PARAM_QUALITY]: level
             }
         } : {}));
     } else if (encoding === 'zstd' && ZstdCodec) {
-        return zstdCompress(body, level);
+        return asBuffer(await zstdCompress(body, level));
     } else if (!encoding || encoding === 'identity' || encoding === 'amz-1.0') {
-        return body;
+        return asBuffer(body);
     } else {
         throw new Error(`Unknown encoding: ${encoding}`);
     }

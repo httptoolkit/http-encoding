@@ -24,15 +24,17 @@ The library includes two general methods:
 
 Takes an encoded body buffer and encoding (in the format of a standard HTTP [content-encoding header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding)) and returns a promise for a decoded buffer, using the zero to many buffers specified in the header.
 
-The input buffer can be either a Uint8Array or a Node Buffer (a subclass of Uint8Array). In a browser this returns a Uint8Array, in Node.js it returns a Node Buffer (a subclass of Uint8Array).
+The input buffer can be any Uint8Array including a Node Buffer (a subclass of Uint8Array). A node-compatible buffer is always returned.
 
 If any encoding is unrecognized or unavailable then this method will throw an exception.
+
+A `decodeBufferSync` method is also available for some use cases, but not recommended, as it's less performant and cannot support some encodings (Brotli or Zstandard).
 
 ### `encodeBuffer(body, encoding, { level })`
 
 Takes a raw body buffer and a single encoding (a valid HTTP [content-encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding) name) and returns a promise for an encoded buffer, using the zero to many buffers specified in the header.
 
-The input buffer can be either a Uint8Array or a Node Buffer (a subclass of Uint8Array). In a browser this returns a Uint8Array, in Node.js it returns a Node Buffer (a subclass of Uint8Array).
+The input buffer can be any Uint8Array including a Node Buffer (a subclass of Uint8Array). A node-compatible buffer is always returned.
 
 If any encoding is unrecognized or unavailable then this method will throw an exception.
 
@@ -54,8 +56,8 @@ Each method accepts a buffer and returns a promise for a buffer.
 
 ## Browser usage
 
-To use this in a browser, you'll need to use a bundler (e.g. Webpack) that can include standard Node.js polyfill packages, and which supports WebAssembly.
+To use this in a browser, you'll need to use a bundler (e.g. Webpack) that can include standard Node.js polyfill packages, you may need to install those polyfill packages, and your bundler needs to support bundling WebAssembly (e.g. Webpack v4+).
 
-In Webpack v4 this should work automatically, in Webpack v5 this will require explicit dependencies and configuration. See this package's own [test webpack config](./karma.conf.js#L14-L44) and [dev dependencies](./package.json) for a working example.
+In Webpack v4 this should all work automatically. In Webpack v5 this will require explicit dependencies and configuration. See this package's own [test webpack config](./karma.conf.js#L14-L44) and [dev dependencies](./package.json) for a working example.
 
 Brotli and Zstandard are only supported in runtime environments that support WebAssembly. All WebAssembly packages are loaded on-demand and only when native methods (e.g. Node's `zlib.brotli*`) are not available.
