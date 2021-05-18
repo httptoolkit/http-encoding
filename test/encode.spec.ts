@@ -24,7 +24,7 @@ describe("Encode", () => {
     it('should throw for unknown encodings', async () => {
         await expect((async () => {
             return await encodeBuffer(Buffer.from('hello world'), 'randomized' as any, { level: 1 })
-        })()).to.be.rejectedWith('Unknown encoding: randomized');
+        })()).to.be.rejectedWith('Unsupported encoding: randomized');
     });
 
     it('should encode gzip bodies', async () => {

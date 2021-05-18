@@ -105,9 +105,53 @@ export async function decodeBuffer(body: Uint8Array, encoding: string | string[]
         return asBuffer(body);
     } else if (!encoding || encoding === 'identity') {
         return asBuffer(body);
-    } else {
-        throw new Error(`Unknown encoding: ${encoding}`);
     }
+
+    throw new Error(`Unsupported encoding: ${encoding}`);
+};
+
+
+
+/**
+ * Decodes a buffer, using the encodings as specified in a content-encoding header, synchronously.
+ * Returns a Buffer instance in Node, or a Uint8Array in a browser.
+ *
+ * Zstandard and Brotli decoding are not be supported in synchronous usage.
+ *
+ * Throws if any unrecognized/unavailable content-encoding is found.
+ *
+ * @deprecated This is here for convenience with some existing APIs, but for performance & consistency
+ * async usage with decodeBuffer is preferable.
+ */
+ export function decodeBufferSync(body: Uint8Array, encoding: string | string[] | undefined): Buffer {
+    if (Array.isArray(encoding) || (typeof encoding === 'string' && encoding.indexOf(', ') >= 0)) {
+        const encodings = typeof encoding === 'string' ? encoding.split(', ').reverse() : encoding;
+        return encodings.reduce((content, nextEncoding) => {
+            return decodeBufferSync(content, nextEncoding);
+        }, body) as Buffer;
+    }
+
+    if (encoding === 'gzip' || encoding === 'x-gzip') {
+        return zlib.gunzipSync(body);
+    } else if (encoding === 'deflate' || encoding === 'x-deflate') {
+        // Deflate is ambiguous, and may or may not have a zlib wrapper.
+        // This checks the buffer header directly, based on
+        // https://stackoverflow.com/a/37528114/68051
+        const lowNibble = body[0] & 0xF;
+        if (lowNibble === 8) {
+            return zlib.inflateSync(body);
+        } else {
+            return zlib.inflateRawSync(body);
+        }
+    } else if (encoding === 'amz-1.0') {
+        // Weird encoding used by some AWS requests, actually just unencoded JSON:
+        // https://docs.aws.amazon.com/en_us/AmazonCloudWatch/latest/APIReference/making-api-requests.html
+        return asBuffer(body);
+    } else if (!encoding || encoding === 'identity') {
+        return asBuffer(body);
+    }
+
+    throw new Error(`Unsupported encoding: ${encoding}`);
 };
 
 /**
@@ -136,6 +180,6 @@ export async function decodeBuffer(body: Uint8Array, encoding: string | string[]
     } else if (!encoding || encoding === 'identity' || encoding === 'amz-1.0') {
         return asBuffer(body);
     } else {
-        throw new Error(`Unknown encoding: ${encoding}`);
+        throw new Error(`Unsupported encoding: ${encoding}`);
     }
 };
