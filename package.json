@@ -3,13 +3,23 @@
   "version": "1.0.0",
   "description": "Everything you need to handle HTTP message body content-encoding",
   "main": "dist/index.js",
+  "browser": {
+    "path": false,
+    "fs": false
+  },
+  "files": [
+    "dist",
+    "src",
+    "custom-typings"
+  ],
   "scripts": {
     "build": "tsc -p .",
     "pretest": "npm run build",
     "test": "npm run test:node && npm run test:browser",
     "test:node": "TS_NODE_FILES=true mocha -r ts-node/register 'test/**/*.spec.ts'",
     "test:browser": "karma start",
-    "test:browser:debug": "npm run test:browser -- --single-run=false --browsers Chrome"
+    "test:browser:debug": "npm run test:browser -- --single-run=false --browsers Chrome",
+    "prepublish": "npm run build"
   },
   "repository": {
     "type": "git",
