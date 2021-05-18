@@ -1,6 +1,7 @@
 import * as zlib from 'zlib';
 import { promisify } from 'util';
 import { importWasmBrotli } from './wasm-brotli';
+import { ZstdCodec, ZstdStreaming } from 'zstd-codec';
 
 const gunzip = promisify(zlib.gunzip);
 const inflate = promisify(zlib.inflate);
@@ -14,6 +15,19 @@ const brotliDecompress = zlib.brotliDecompress
         const { decompress } = await importWasmBrotli();
         return Buffer.from(await decompress(buffer));
     });
+
+// Zstd is a non-built-in wasm implementation that initializes async. We
+// handle this by loading it when the first zstd buffer is decompressed.
+let zstd: Promise<ZstdStreaming> | undefined;
+const zstdDecompress = async (buffer: Uint8Array): Promise<Uint8Array> => {
+    if (!zstd) {
+        zstd = new Promise((resolve) => ZstdCodec.run((binding) => {
+            resolve(new binding.Streaming());
+        }));
+    }
+
+    return Buffer.from(await (await zstd).decompress(buffer));
+};
 
 /**
  * Decodes a buffer, using the encodings as specified in a content-encoding header. Returns
@@ -45,6 +59,8 @@ export async function decodeBuffer(body: Uint8Array, encoding?: string | string[
         }
     } else if (encoding === 'br' && brotliDecompress) {
         return brotliDecompress(body);
+    } else if (encoding === 'zstd' && ZstdCodec) {
+        return zstdDecompress(body);
     } else if (encoding === 'amz-1.0') {
         // Weird encoding used by some AWS requests, actually just unencoded JSON:
         // https://docs.aws.amazon.com/en_us/AmazonCloudWatch/latest/APIReference/making-api-requests.html

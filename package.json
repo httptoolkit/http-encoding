@@ -7,7 +7,7 @@
     "build": "tsc -p .",
     "pretest": "npm run build",
     "test": "npm run test:node && npm run test:browser",
-    "test:node": "mocha -r ts-node/register 'test/**/*.spec.ts'",
+    "test:node": "TS_NODE_FILES=true mocha -r ts-node/register 'test/**/*.spec.ts'",
     "test:browser": "karma start",
     "test:browser:debug": "npm run test:browser -- --single-run=false --browsers Chrome"
   },
@@ -34,7 +34,8 @@
   },
   "homepage": "https://github.com/httptoolkit/http-encoding#readme",
   "dependencies": {
-    "wasm-brotli": "^1.0.2"
+    "wasm-brotli": "^1.0.2",
+    "zstd-codec": "^0.1.2"
   },
   "devDependencies": {
     "@types/chai": "^4.2.18",

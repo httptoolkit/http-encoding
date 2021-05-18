@@ -1,5 +1,6 @@
 import * as zlib from 'zlib';
 import * as brotli from 'wasm-brotli';
+import { ZstdCodec, ZstdStreaming } from 'zstd-codec';
 
 import chai = require("chai");
 import chaiAsPromised = require("chai-as-promised");
@@ -7,6 +8,12 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 
 import { decodeBuffer } from '../src/index';
+
+const zstd: Promise<ZstdStreaming> = new Promise((resolve) =>
+    ZstdCodec.run((binding) => {
+        resolve(new binding.Streaming())
+    })
+);
 
 describe("Decode", () => {
     it('should return the raw text for unspecified requests', async () => {
@@ -51,13 +58,21 @@ describe("Decode", () => {
         expect(body.toString()).to.equal('Brotli brotli brotli brotli brotli');
     });
 
+    it('can decode zstd bodies', async () => {
+        const content = Buffer.from((await zstd).compress(Buffer.from('hello zstd zstd zstd world')));
+        const body = await decodeBuffer(content, 'zstd');
+        expect(body.toString()).to.equal('hello zstd zstd zstd world');
+    });
+
     it('can decode bodies with multiple encodings', async () => {
-        const content = zlib.gzipSync(
-            await brotli.compress(
-                Buffer.from('First brotli, then gzip, now this', 'utf8')
+        const content = (await zstd).compress(
+            zlib.gzipSync(
+                Buffer.from(await brotli.compress(
+                    Buffer.from('First brotli, then gzip, last zstandard, now this', 'utf8')
+                ))
             )
         );
-        const body = await decodeBuffer(content, 'br, identity, gzip, identity');
-        expect(body.toString()).to.equal('First brotli, then gzip, now this');
+        const body = await decodeBuffer(content, 'br, identity, gzip, identity, zstd');
+        expect(body.toString()).to.equal('First brotli, then gzip, last zstandard, now this');
     });
 });
