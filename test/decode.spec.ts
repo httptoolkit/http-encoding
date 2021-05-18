@@ -1,4 +1,5 @@
 import * as zlib from 'zlib';
+import * as brotli from 'wasm-brotli';
 
 import chai = require("chai");
 import chaiAsPromised = require("chai-as-promised");
@@ -42,20 +43,20 @@ describe("Decode", () => {
         expect(body.toString()).to.equal('Raw deflate response');
     });
 
-    // Brotli strings generated with:
-    // echo -n '$CONTENT' | brotli --stdout - | base64
-
     it('can decode brotli bodies', async () => {
-        // We use a pre-compressed input, because the compressor won't run in a browser.
-        const brotliCompressedMessage = Buffer.from('GxoAABypU587dC0k9ianQOgqjS32iUTcCA==', 'base64');
-        const body = await decodeBuffer(brotliCompressedMessage, 'br');
-        expect(body.toString()).to.equal('Brotli brotli brotli brotli');
+        const content = Buffer.from(
+            await brotli.compress(Buffer.from('Brotli brotli brotli brotli brotli', 'utf8'))
+        );
+        const body = await decodeBuffer(content, 'br');
+        expect(body.toString()).to.equal('Brotli brotli brotli brotli brotli');
     });
 
     it('can decode bodies with multiple encodings', async () => {
-        // We use a pre-compressed input, because the compressor won't run in a browser.
-        const brotliCompressedMessage = Buffer.from('HyAA+EV3eL3z9149GWlJRDmILALlIfBcpHp8tMkhTTzbUDoA', 'base64');
-        const content = zlib.gzipSync(brotliCompressedMessage);
+        const content = zlib.gzipSync(
+            await brotli.compress(
+                Buffer.from('First brotli, then gzip, now this', 'utf8')
+            )
+        );
         const body = await decodeBuffer(content, 'br, identity, gzip, identity');
         expect(body.toString()).to.equal('First brotli, then gzip, now this');
     });
