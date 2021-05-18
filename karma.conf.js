@@ -27,6 +27,9 @@ module.exports = function(config) {
                     assert: require.resolve('assert/'),
                     buffer: require.resolve('buffer/'),
                     stream: require.resolve('stream-browserify'),
+                    crypto: require.resolve('crypto-browserify'),
+                    path: false,
+                    fs: false
                 }
             },
             experiments: {
