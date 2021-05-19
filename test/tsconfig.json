@@ -1,8 +1,5 @@
 {
     "extends": "../tsconfig.json",
-    "compilerOptions": {
-        "allowJs": false
-    },
     "include": [
         "../custom-typings/*.d.ts",
         "./**/*.ts"

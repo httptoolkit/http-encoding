@@ -52,7 +52,7 @@ describe("Decode", () => {
 
     it('should decode brotli bodies', async () => {
         const content = Buffer.from(
-            await brotli.compress(Buffer.from('Brotli brotli brotli brotli brotli', 'utf8'))
+            await (await brotli).compress(Buffer.from('Brotli brotli brotli brotli brotli', 'utf8'))
         );
         const body = await decodeBuffer(content, 'br');
         expect(body.toString()).to.equal('Brotli brotli brotli brotli brotli');
@@ -67,7 +67,7 @@ describe("Decode", () => {
     it('should decode bodies with multiple encodings', async () => {
         const content = (await zstd).compress(
             zlib.gzipSync(
-                Buffer.from(await brotli.compress(
+                Buffer.from(await (await brotli).compress(
                     Buffer.from('First brotli, then gzip, last zstandard, now this', 'utf8')
                 ))
             )

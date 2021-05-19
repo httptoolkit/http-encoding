@@ -1,6 +1,5 @@
 import * as zlib from 'zlib';
 import { promisify } from 'util';
-import { importWasmBrotli } from './wasm-brotli';
 import { ZstdCodec, ZstdStreaming } from 'zstd-codec';
 
 export type SUPPORTED_ENCODING =
@@ -24,14 +23,14 @@ export const inflateRaw = promisify(zlib.inflateRaw);
 export const brotliCompress = zlib.brotliCompress
     ? promisify(zlib.brotliCompress)
     : (async (buffer: Uint8Array, _unusedOpts: zlib.BrotliOptions): Promise<Uint8Array> => {
-        const { compress } = await importWasmBrotli();
+        const { compress } = await import('wasm-brotli'); // Sync in node, async in browsers
         return compress(buffer);
     });
 
 export const brotliDecompress = zlib.brotliDecompress
     ? promisify(zlib.brotliDecompress)
     : (async (buffer: Uint8Array): Promise<Uint8Array> => {
-        const { decompress } = await importWasmBrotli();
+        const { decompress } = await import('wasm-brotli'); // Sync in node, async in browsers
         return decompress(buffer);
     });
 

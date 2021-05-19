@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "browser": {
     "path": false,
-    "fs": false
+    "fs": false,
+    "wasm-brotli": "./wasm-brotli-browser"
   },
   "sideEffects": false,
   "files": [

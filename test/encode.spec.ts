@@ -40,7 +40,7 @@ describe("Encode", () => {
     it('should encode brotli bodies', async () => {
         const body = await encodeBuffer(Buffer.from('Response to brotlify brotlify'), 'br', { level: 1 });
         expect(Buffer.from(
-            await brotli.decompress(body)
+            await (await brotli).decompress(body)
         ).toString()).to.equal('Response to brotlify brotlify');
     });
 
