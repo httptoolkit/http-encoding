@@ -22,7 +22,7 @@ export const inflateRaw = promisify(zlib.inflateRaw);
 // use the wasm-brotli package if not.
 export const brotliCompress = zlib.brotliCompress
     ? promisify(zlib.brotliCompress)
-    : (async (buffer: Uint8Array, _unusedOpts: zlib.BrotliOptions): Promise<Uint8Array> => {
+    : (async (buffer: Uint8Array, _unusedOpts?: zlib.BrotliOptions): Promise<Uint8Array> => {
         const { compress } = await import('wasm-brotli'); // Sync in node, async in browsers
         return compress(buffer);
     });
