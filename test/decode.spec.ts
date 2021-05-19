@@ -9,6 +9,15 @@ const expect = chai.expect;
 
 import { decodeBuffer, decodeBufferSync } from '../src/index';
 
+function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
+    return buffer.buffer.slice(buffer.byteOffset, buffer.byteLength + buffer.byteOffset)
+}
+
+function bufferToTypedArray(buffer: Buffer): Uint8Array {
+    return new Uint8Array(buffer, buffer.byteOffset, buffer.byteLength);
+}
+
+
 const zstd: Promise<ZstdStreaming> = new Promise((resolve) =>
     ZstdCodec.run((binding) => {
         resolve(new binding.Streaming())
@@ -34,6 +43,18 @@ describe("Decode", () => {
 
     it('should decode gzip bodies', async () => {
         const content = zlib.gzipSync('Gzip response');
+        const body = await decodeBuffer(content, 'gzip');
+        expect(body.toString()).to.equal('Gzip response');
+    });
+
+    it('should decode gzip bodies from ArrayBuffer', async () => {
+        const content = bufferToArrayBuffer(zlib.gzipSync('Gzip response'));
+        const body = await decodeBuffer(content, 'gzip');
+        expect(body.toString()).to.equal('Gzip response');
+    });
+
+    it('should decode gzip bodies from Uint8Array', async () => {
+        const content = bufferToTypedArray(zlib.gzipSync('Gzip response'));
         const body = await decodeBuffer(content, 'gzip');
         expect(body.toString()).to.equal('Gzip response');
     });
@@ -96,6 +117,18 @@ describe("DecodeSync", () => {
 
     it('should decode gzip bodies', () => {
         const content = zlib.gzipSync('Gzip response');
+        const body = decodeBufferSync(content, 'gzip');
+        expect(body.toString()).to.equal('Gzip response');
+    });
+
+    it('should decode gzip bodies from ArrayBuffer', () => {
+        const content = bufferToArrayBuffer(zlib.gzipSync('Gzip response'));
+        const body = decodeBufferSync(content, 'gzip');
+        expect(body.toString()).to.equal('Gzip response');
+    });
+
+    it('should decode gzip bodies from Uint8Array', () => {
+        const content = bufferToTypedArray(zlib.gzipSync('Gzip response'));
         const body = decodeBufferSync(content, 'gzip');
         expect(body.toString()).to.equal('Gzip response');
     });

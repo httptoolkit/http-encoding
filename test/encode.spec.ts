@@ -9,6 +9,15 @@ const expect = chai.expect;
 
 import { encodeBuffer } from '../src/index';
 
+function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
+    return buffer.buffer.slice(buffer.byteOffset, buffer.byteLength + buffer.byteOffset)
+}
+
+
+function bufferToTypedArray(buffer: Buffer): Uint8Array {
+    return new Uint8Array(buffer, buffer.byteOffset, buffer.byteLength);
+}
+
 const zstd: Promise<ZstdStreaming> = new Promise((resolve) =>
     ZstdCodec.run((binding) => {
         resolve(new binding.Streaming())
@@ -29,6 +38,18 @@ describe("Encode", () => {
 
     it('should encode gzip bodies', async () => {
         const body = await encodeBuffer(Buffer.from('Response to gzip'), 'gzip', { level: 1 });
+        expect(zlib.gunzipSync(body).toString()).to.equal('Response to gzip');
+    });
+
+    it('should encode gzip bodies from Uint8Array', async () => {
+        const content = bufferToTypedArray(Buffer.from('Response to gzip'));
+        const body = await encodeBuffer(content, 'gzip', { level: 1 });
+        expect(zlib.gunzipSync(body).toString()).to.equal('Response to gzip');
+    });
+
+    it('should encode gzip bodies from ArrayBuffer', async () => {
+        const content = bufferToArrayBuffer(Buffer.from('Response to gzip'));
+        const body = await encodeBuffer(content, 'gzip', { level: 1 });
         expect(zlib.gunzipSync(body).toString()).to.equal('Response to gzip');
     });
 

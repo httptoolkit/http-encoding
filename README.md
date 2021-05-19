@@ -34,7 +34,7 @@ A `decodeBufferSync` method is also available for some use cases, but not recomm
 
 Takes a raw body buffer and a single encoding (a valid HTTP [content-encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding) name) and returns a promise for an encoded buffer, using the zero to many buffers specified in the header.
 
-The input buffer can be any Uint8Array including a Node Buffer (a subclass of Uint8Array). A node-compatible buffer is always returned.
+The input buffer can be any Uint8Array (including a Node Buffer, which is a Uint8Array subclass) or an ArrayBuffer. A node-compatible buffer is always returned.
 
 If any encoding is unrecognized or unavailable then this method will throw an exception.
 
