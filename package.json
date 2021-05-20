@@ -12,7 +12,8 @@
   "files": [
     "dist",
     "src",
-    "custom-typings"
+    "custom-typings",
+    "wasm-brotli-browser.js"
   ],
   "scripts": {
     "build": "tsc -p .",
