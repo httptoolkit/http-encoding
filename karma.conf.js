@@ -3,6 +3,8 @@ tmp.setGracefulCleanup();
 
 const webpack = require('webpack');
 
+const outputDir = tmp.dirSync({ unsafeCleanup: true }).name;
+
 module.exports = function(config) {
     config.set({
         frameworks: ['mocha', 'chai', 'webpack'],
@@ -16,7 +18,17 @@ module.exports = function(config) {
             devtool: 'source-map',
             module: {
                 rules: [
-                    { test: /\.ts$/, loader: 'ts-loader', exclude: /node_modules/ }
+                    {
+                        test: /\.ts$/,
+                        loader: 'ts-loader',
+                        options: {
+                            configFile: 'test/tsconfig.json',
+                            compilerOptions: {
+                                outDir: outputDir
+                            }
+                        },
+                        exclude: /node_modules/
+                    }
                 ]
             },
             resolve: {

@@ -17,7 +17,6 @@ function bufferToTypedArray(buffer: Buffer): Uint8Array {
     return new Uint8Array(buffer, buffer.byteOffset, buffer.byteLength);
 }
 
-
 const zstd: Promise<ZstdStreaming> = new Promise((resolve) =>
     ZstdCodec.run((binding) => {
         resolve(new binding.Streaming())

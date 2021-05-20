@@ -13,7 +13,6 @@ function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
     return buffer.buffer.slice(buffer.byteOffset, buffer.byteLength + buffer.byteOffset)
 }
 
-
 function bufferToTypedArray(buffer: Buffer): Uint8Array {
     return new Uint8Array(buffer, buffer.byteOffset, buffer.byteLength);
 }
