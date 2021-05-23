@@ -19,18 +19,18 @@ export const inflate = promisify(zlib.inflate);
 export const inflateRaw = promisify(zlib.inflateRaw);
 
 // Use Node's new built-in Brotli compression, if available, or
-// use the wasm-brotli package if not.
+// use the brotli-wasm package if not.
 export const brotliCompress = zlib.brotliCompress
     ? promisify(zlib.brotliCompress)
     : (async (buffer: Uint8Array, _unusedOpts?: zlib.BrotliOptions): Promise<Uint8Array> => {
-        const { compress } = await import('wasm-brotli'); // Sync in node, async in browsers
+        const { compress } = await import('brotli-wasm'); // Sync in node, async in browsers
         return compress(buffer);
     });
 
 export const brotliDecompress = zlib.brotliDecompress
     ? promisify(zlib.brotliDecompress)
     : (async (buffer: Uint8Array): Promise<Uint8Array> => {
-        const { decompress } = await import('wasm-brotli'); // Sync in node, async in browsers
+        const { decompress } = await import('brotli-wasm'); // Sync in node, async in browsers
         return decompress(buffer);
     });
 

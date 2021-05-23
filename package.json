@@ -3,17 +3,11 @@
   "version": "1.0.1",
   "description": "Everything you need to handle HTTP message body content-encoding",
   "main": "dist/index.js",
-  "browser": {
-    "path": false,
-    "fs": false,
-    "wasm-brotli": "./wasm-brotli-browser"
-  },
   "sideEffects": false,
   "files": [
     "dist",
     "src",
-    "custom-typings",
-    "wasm-brotli-browser.js"
+    "custom-typings"
   ],
   "scripts": {
     "build": "tsc -p .",
@@ -47,7 +41,7 @@
   },
   "homepage": "https://github.com/httptoolkit/http-encoding#readme",
   "dependencies": {
-    "wasm-brotli": "^1.0.2",
+    "brotli-wasm": "^1.0.0",
     "zstd-codec": "^0.1.2"
   },
   "devDependencies": {

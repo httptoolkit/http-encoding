@@ -10,7 +10,10 @@ module.exports = function(config) {
         frameworks: ['mocha', 'chai', 'webpack'],
         files: [
             'src/**/*.ts',
-            'test/**/*.spec.ts'
+            'test/**/*.spec.ts',
+            // Required for wasm due to https://github.com/ryanclark/karma-webpack/issues/498. Results
+            // in an annoying warning before the webpack build, but then it works fine.
+            { pattern: `${outputDir}/**/*`, included: false, served: true }
         ],
         mime: { 'text/x-typescript': ['ts'] },
         webpack: {
@@ -24,7 +27,7 @@ module.exports = function(config) {
                         options: {
                             configFile: 'test/tsconfig.json',
                             compilerOptions: {
-                                outDir: outputDir
+                                outDir: tmp.dirSync({ unsafeCleanup: true }).name
                             }
                         },
                         exclude: /node_modules/
@@ -54,7 +57,7 @@ module.exports = function(config) {
                 })
             ],
             output: {
-                path: tmp.dirSync().name
+                path: outputDir
             }
         },
         webpackMiddleware: {

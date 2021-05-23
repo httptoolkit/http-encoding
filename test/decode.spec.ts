@@ -1,5 +1,5 @@
 import * as zlib from 'zlib';
-import * as brotli from 'wasm-brotli';
+import * as brotli from 'brotli-wasm';
 import { ZstdCodec, ZstdStreaming } from 'zstd-codec';
 
 import chai = require("chai");
