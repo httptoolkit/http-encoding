@@ -1,6 +1,6 @@
 import * as zlib from 'zlib';
 import * as brotli from 'brotli-wasm';
-import { ZstdCodec, ZstdStreaming } from 'zstd-codec';
+import type { ZstdStreaming } from 'zstd-codec';
 
 import chai = require("chai");
 import chaiAsPromised = require("chai-as-promised");
@@ -17,8 +17,8 @@ function bufferToTypedArray(buffer: Buffer): Uint8Array {
     return new Uint8Array(buffer, buffer.byteOffset, buffer.byteLength);
 }
 
-const zstd: Promise<ZstdStreaming> = new Promise((resolve) =>
-    ZstdCodec.run((binding) => {
+const zstd: Promise<ZstdStreaming> = new Promise(async (resolve) =>
+    (await import('zstd-codec')).ZstdCodec.run((binding) => {
         resolve(new binding.Streaming())
     })
 );

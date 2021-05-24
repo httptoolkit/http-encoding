@@ -1,6 +1,6 @@
 import * as zlib from 'zlib';
 import { promisify } from 'util';
-import { ZstdCodec, ZstdStreaming } from 'zstd-codec';
+import type { ZstdStreaming } from 'zstd-codec';
 
 export type SUPPORTED_ENCODING =
     | 'identity'
@@ -34,27 +34,28 @@ export const brotliDecompress = zlib.brotliDecompress
         return decompress(buffer);
     });
 
-// Zstd is a non-built-in wasm implementation that initializes async. We
-// handle this by loading it when the first zstd buffer is decompressed.
+// Zstd is a non-built-in wasm implementation that initializes async. We handle this by
+// loading it when the first zstd buffer is decompressed. That lets us defer loading
+// until that point too, which is good since it's large-ish & rarely used.
 let zstd: Promise<ZstdStreaming> | undefined;
-export const zstdCompress = async (buffer: Uint8Array, level?: number): Promise<Uint8Array> => {
+const getZstd = async () => {
     if (!zstd) {
-        zstd = new Promise((resolve) => ZstdCodec.run((binding) => {
-            resolve(new binding.Streaming());
-        }));
+        zstd = new Promise(async (resolve) => {
+            const { ZstdCodec } = await import('zstd-codec');
+            ZstdCodec.run((binding) => {
+                resolve(new binding.Streaming());
+            })
+        });
     }
+    return await zstd;
+};
 
-    return (await zstd).compress(buffer, level);
+export const zstdCompress = async (buffer: Uint8Array, level?: number): Promise<Uint8Array> => {
+    return (await getZstd()).compress(buffer, level);
 };
 
 export const zstdDecompress = async (buffer: Uint8Array): Promise<Uint8Array> => {
-    if (!zstd) {
-        zstd = new Promise((resolve) => ZstdCodec.run((binding) => {
-            resolve(new binding.Streaming());
-        }));
-    }
-
-    return (await zstd).decompress(buffer);
+    return (await getZstd()).decompress(buffer);
 };
 
 const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {
@@ -100,7 +101,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         }
     } else if (encoding === 'br') {
         return asBuffer(await brotliDecompress(bodyBuffer));
-    } else if (encoding === 'zstd' && ZstdCodec) {
+    } else if (encoding === 'zstd') {
         return asBuffer(await zstdDecompress(bodyBuffer));
     } else if (encoding === 'amz-1.0') {
         // Weird encoding used by some AWS requests, actually just unencoded JSON:
@@ -181,7 +182,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
                 [zlib.constants.BROTLI_PARAM_QUALITY]: level
             }
         } : {}));
-    } else if (encoding === 'zstd' && ZstdCodec) {
+    } else if (encoding === 'zstd') {
         return asBuffer(await zstdCompress(bodyBuffer, level));
     } else if (!encoding || encoding === 'identity' || encoding === 'amz-1.0') {
         return asBuffer(bodyBuffer);
