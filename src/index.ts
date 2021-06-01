@@ -103,11 +103,21 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         return asBuffer(await brotliDecompress(bodyBuffer));
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdDecompress(bodyBuffer));
-    } else if (encoding === 'amz-1.0') {
+    } else if (
+        // No encoding set at all:
+        !encoding ||
+        // Explicitly unencoded:
+        encoding === 'identity' ||
         // Weird encoding used by some AWS requests, actually just unencoded JSON:
         // https://docs.aws.amazon.com/en_us/AmazonCloudWatch/latest/APIReference/making-api-requests.html
-        return asBuffer(bodyBuffer);
-    } else if (!encoding || encoding === 'identity') {
+        encoding === 'amz-1.0' ||
+        // Workaround for Apache's mod_deflate handling of 'identity', used in the wild mostly with PHP.
+        // https://github.com/curl/curl/pull/2298
+        encoding === 'none' ||
+        // Common misunderstanding, seen a few times in the wild:
+        encoding.toLowerCase() === 'utf-8'
+    ) {
+        // All of the above are different ways of saying "no encoding at all"
         return asBuffer(bodyBuffer);
     }
 
