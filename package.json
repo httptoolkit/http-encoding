@@ -1,6 +1,6 @@
 {
   "name": "http-encoding",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Everything you need to handle HTTP message body content-encoding",
   "main": "dist/index.js",
   "browser": {
