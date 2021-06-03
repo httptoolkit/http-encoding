@@ -69,6 +69,21 @@ const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {
     }
 };
 
+const IDENTITY_ENCODINGS = [
+    // Explicitly unencoded in the standard way:
+    'identity',
+    // Weird encoding used by some AWS requests, actually just unencoded JSON:
+    // https://docs.aws.amazon.com/en_us/AmazonCloudWatch/latest/APIReference/making-api-requests.html
+    'amz-1.0',
+    // Workaround for Apache's mod_deflate handling of 'identity', used in the wild mostly with PHP.
+    // https://github.com/curl/curl/pull/2298
+    'none',
+    // No idea where these comes from, but they definitely exist in real traffic and seem to come
+    // from common confusion between content encodings and content types:
+    'text',
+    'utf-8'
+]
+
 /**
  * Decodes a buffer, using the encodings as specified in a content-encoding header. Returns
  * a Buffer instance in Node, or a Uint8Array in a browser.
@@ -107,15 +122,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         // No encoding set at all:
         !encoding ||
         // Explicitly unencoded:
-        encoding === 'identity' ||
-        // Weird encoding used by some AWS requests, actually just unencoded JSON:
-        // https://docs.aws.amazon.com/en_us/AmazonCloudWatch/latest/APIReference/making-api-requests.html
-        encoding === 'amz-1.0' ||
-        // Workaround for Apache's mod_deflate handling of 'identity', used in the wild mostly with PHP.
-        // https://github.com/curl/curl/pull/2298
-        encoding === 'none' ||
-        // Common misunderstanding, seen a few times in the wild:
-        encoding.toLowerCase() === 'utf-8'
+        IDENTITY_ENCODINGS.includes(encoding.toLowerCase())
     ) {
         // All of the above are different ways of saying "no encoding at all"
         return asBuffer(bodyBuffer);
@@ -163,7 +170,12 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         // Weird encoding used by some AWS requests, actually just unencoded JSON:
         // https://docs.aws.amazon.com/en_us/AmazonCloudWatch/latest/APIReference/making-api-requests.html
         return asBuffer(bodyBuffer);
-    } else if (!encoding || encoding === 'identity') {
+    } else if (
+        // No encoding set at all:
+        !encoding ||
+        // Explicitly unencoded:
+        IDENTITY_ENCODINGS.includes(encoding.toLowerCase())
+    ) {
         return asBuffer(bodyBuffer);
     }
 
@@ -194,7 +206,12 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         } : {}));
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdCompress(bodyBuffer, level));
-    } else if (!encoding || encoding === 'identity' || encoding === 'amz-1.0') {
+    } else if (
+        // No encoding set at all:
+        !encoding ||
+        // Explicitly unencoded:
+        IDENTITY_ENCODINGS.includes(encoding.toLowerCase())
+    ) {
         return asBuffer(bodyBuffer);
     } else {
         throw new Error(`Unsupported encoding: ${encoding}`);

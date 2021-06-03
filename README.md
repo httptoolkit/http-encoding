@@ -12,7 +12,7 @@ The supported codecs are:
 * Brotli
 * Zstandard
 
-The 'identity' and 'amz-1.0' encodings (no-op encodings) are also correctly supported.
+The 'identity', 'amz-1.0', 'none', 'text' and 'utf-8' encodings (no-op encodings) are also supported, passed through with no en/decoding at all. Only 'identity' is standard, but the others are all in common use regardless.
 
 Found a codec used in real-world HTTP that isn't supported? Open an issue!
 
