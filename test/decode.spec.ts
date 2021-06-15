@@ -95,6 +95,12 @@ describe("Decode", () => {
         const body = await decodeBuffer(content, 'br, identity, gzip, identity, zstd');
         expect(body.toString()).to.equal('First brotli, then gzip, last zstandard, now this');
     });
+
+    it('should decode bodies ignoring the code of the encoding', async () => {
+        const content = bufferToTypedArray(zlib.gzipSync('Gzip response'));
+        const body = await decodeBuffer(content, 'GZIP');
+        expect(body.toString()).to.equal('Gzip response');
+    });
 });
 
 describe("DecodeSync", () => {
@@ -152,5 +158,11 @@ describe("DecodeSync", () => {
         );
         const body = decodeBufferSync(content, 'deflate, identity, gzip, identity');
         expect(body.toString()).to.equal('First deflate, then gzip, now this');
+    });
+
+    it('should decode bodies ignoring the code of the encoding', () => {
+        const content = zlib.gzipSync('Gzip response');
+        const body = decodeBufferSync(content, 'GZIP');
+        expect(body.toString()).to.equal('Gzip response');
     });
 });

@@ -81,6 +81,7 @@ const IDENTITY_ENCODINGS = [
     // No idea where these comes from, but they definitely exist in real traffic and seem to come
     // from common confusion between content encodings and content types:
     'text',
+    'binary',
     'utf-8'
 ]
 
@@ -102,6 +103,9 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         }, Promise.resolve(bodyBuffer as Uint8Array)) as Promise<Buffer>;
     }
 
+    if (!encoding) encoding = 'identity';
+    else encoding = encoding.toLowerCase();
+
     if (encoding === 'gzip' || encoding === 'x-gzip') {
         return gunzip(bodyBuffer);
     } else if (encoding === 'deflate' || encoding === 'x-deflate') {
@@ -118,13 +122,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         return asBuffer(await brotliDecompress(bodyBuffer));
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdDecompress(bodyBuffer));
-    } else if (
-        // No encoding set at all:
-        !encoding ||
-        // Explicitly unencoded:
-        IDENTITY_ENCODINGS.includes(encoding.toLowerCase())
-    ) {
-        // All of the above are different ways of saying "no encoding at all"
+    } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     }
 
@@ -154,6 +152,9 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         }, bodyBuffer) as Buffer;
     }
 
+    if (!encoding) encoding = 'identity';
+    else encoding = encoding.toLowerCase();
+
     if (encoding === 'gzip' || encoding === 'x-gzip') {
         return zlib.gunzipSync(bodyBuffer);
     } else if (encoding === 'deflate' || encoding === 'x-deflate') {
@@ -166,16 +167,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         } else {
             return zlib.inflateRawSync(bodyBuffer);
         }
-    } else if (encoding === 'amz-1.0') {
-        // Weird encoding used by some AWS requests, actually just unencoded JSON:
-        // https://docs.aws.amazon.com/en_us/AmazonCloudWatch/latest/APIReference/making-api-requests.html
-        return asBuffer(bodyBuffer);
-    } else if (
-        // No encoding set at all:
-        !encoding ||
-        // Explicitly unencoded:
-        IDENTITY_ENCODINGS.includes(encoding.toLowerCase())
-    ) {
+    } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     }
 
@@ -194,6 +186,9 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
     const bodyBuffer = asBuffer(body);
     const level = options.level ?? 4;
 
+    if (!encoding) encoding = 'identity';
+    else encoding = encoding.toLowerCase() as SUPPORTED_ENCODING;
+
     if (encoding === 'gzip' || encoding === 'x-gzip') {
         return gzip(bodyBuffer, { level });
     } else if (encoding === 'deflate' || encoding === 'x-deflate') {
@@ -206,12 +201,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         } : {}));
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdCompress(bodyBuffer, level));
-    } else if (
-        // No encoding set at all:
-        !encoding ||
-        // Explicitly unencoded:
-        IDENTITY_ENCODINGS.includes(encoding.toLowerCase())
-    ) {
+    } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     } else {
         throw new Error(`Unsupported encoding: ${encoding}`);

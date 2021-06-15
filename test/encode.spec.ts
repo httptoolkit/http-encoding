@@ -70,4 +70,9 @@ describe("Encode", () => {
             (await zstd).decompress(body)
         ).toString()).to.equal('zstd zstd body body body');
     });
+
+    it('should encode bodies ignoring the case of the encoding', async () => {
+        const body = await encodeBuffer(Buffer.from('Response to gzip'), 'gzip', { level: 1 });
+        expect(zlib.gunzipSync(body).toString()).to.equal('Response to gzip');
+    });
 });
