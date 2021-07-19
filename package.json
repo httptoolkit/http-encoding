@@ -45,7 +45,7 @@
   },
   "homepage": "https://github.com/httptoolkit/http-encoding#readme",
   "dependencies": {
-    "brotli-wasm": "^1.0.0",
+    "brotli-wasm": "^1.1.0",
     "zstd-codec": "^0.1.2"
   },
   "devDependencies": {

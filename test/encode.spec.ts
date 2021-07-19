@@ -58,7 +58,7 @@ describe("Encode", () => {
     });
 
     it('should encode brotli bodies', async () => {
-        const body = await encodeBuffer(Buffer.from('Response to brotlify brotlify'), 'br', { level: 1 });
+        const body = await encodeBuffer(Buffer.from('Response to brotlify brotlify'), 'br');
         expect(Buffer.from(
             await (await brotli).decompress(body)
         ).toString()).to.equal('Response to brotlify brotlify');
@@ -74,5 +74,21 @@ describe("Encode", () => {
     it('should encode bodies ignoring the case of the encoding', async () => {
         const body = await encodeBuffer(Buffer.from('Response to gzip'), 'gzip', { level: 1 });
         expect(zlib.gunzipSync(body).toString()).to.equal('Response to gzip');
+    });
+
+    it('should encode bodies at the provided level', async () => {
+        const barelyEncodedBody = await encodeBuffer(Buffer.from('Response to brotlify brotlify'), 'br', { level: 1 });
+        const heavilyEncodedBody = await encodeBuffer(Buffer.from('Response to brotlify brotlify'), 'br', { level: 11 });
+
+        // Both valid outputs:
+        expect(Buffer.from(
+            await (await brotli).decompress(barelyEncodedBody)
+        ).toString()).to.equal('Response to brotlify brotlify');
+        expect(Buffer.from(
+            await (await brotli).decompress(heavilyEncodedBody)
+        ).toString()).to.equal('Response to brotlify brotlify');
+
+        // But the heavily encoded one is smaller:
+        expect(barelyEncodedBody.length).to.be.greaterThan(heavilyEncodedBody.length);
     });
 });

@@ -21,10 +21,21 @@ export const inflateRaw = promisify(zlib.inflateRaw);
 // Use Node's new built-in Brotli compression, if available, or
 // use the brotli-wasm package if not.
 export const brotliCompress = zlib.brotliCompress
-    ? promisify(zlib.brotliCompress)
-    : (async (buffer: Uint8Array, _unusedOpts?: zlib.BrotliOptions): Promise<Uint8Array> => {
+    ? (async (buffer: Uint8Array, level?: number): Promise<Uint8Array> => {
+        // In node, we just have to convert between the options formats and promisify:
+        return new Promise((resolve, reject) => {
+            zlib.brotliCompress(buffer, level !== undefined
+                ? { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: level } }
+                : {}
+            , (err, result) => {
+                if (err) reject(err);
+                else resolve(result);
+            });
+        });
+    })
+    : (async (buffer: Uint8Array, level?: number): Promise<Uint8Array> => {
         const { compress } = await import('brotli-wasm'); // Sync in node, async in browsers
-        return compress(buffer);
+        return compress(buffer, { quality: level });
     });
 
 export const brotliDecompress = zlib.brotliDecompress
@@ -129,8 +140,6 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
     throw new Error(`Unsupported encoding: ${encoding}`);
 };
 
-
-
 /**
  * Decodes a buffer, using the encodings as specified in a content-encoding header, synchronously.
  * Returns a Buffer instance in Node, or a Uint8Array in a browser.
@@ -194,11 +203,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
     } else if (encoding === 'deflate' || encoding === 'x-deflate') {
         return deflate(bodyBuffer, { level });
     } else if (encoding === 'br') {
-        return asBuffer(await brotliCompress(bodyBuffer, zlib.constants ? {
-            params: {
-                [zlib.constants.BROTLI_PARAM_QUALITY]: level
-            }
-        } : {}));
+        return asBuffer(await brotliCompress(bodyBuffer, level));
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdCompress(bodyBuffer, level));
     } else if (IDENTITY_ENCODINGS.includes(encoding)) {
