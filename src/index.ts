@@ -9,8 +9,7 @@ export type SUPPORTED_ENCODING =
     | 'deflate'
     | 'x-deflate'
     | 'br'
-    | 'zstd'
-    | 'amz-1.0';
+    | 'zstd';
 
 export const gzip = promisify(zlib.gzip);
 export const gunzip = promisify(zlib.gunzip);
@@ -89,10 +88,11 @@ const IDENTITY_ENCODINGS = [
     // Workaround for Apache's mod_deflate handling of 'identity', used in the wild mostly with PHP.
     // https://github.com/curl/curl/pull/2298
     'none',
-    // No idea where these comes from, but they definitely exist in real traffic and seem to come
+    // No idea where these come from, but they definitely exist in real traffic and seem to come
     // from common confusion between content encodings and content types:
     'text',
     'binary',
+    'utf8',
     'utf-8'
 ]
 
