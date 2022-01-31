@@ -71,6 +71,11 @@ describe("Encode", () => {
         ).toString()).to.equal('zstd zstd body body body');
     });
 
+    it('should encode gzip bodies', async () => {
+        const body = await encodeBuffer(Buffer.from('Response as base64'), 'base64');
+        expect(Buffer.from(Buffer.from(body).toString(), 'base64').toString()).to.equal('Response as base64');
+    });
+
     it('should encode bodies ignoring the case of the encoding', async () => {
         const body = await encodeBuffer(Buffer.from('Response to gzip'), 'gzip', { level: 1 });
         expect(zlib.gunzipSync(body).toString()).to.equal('Response to gzip');

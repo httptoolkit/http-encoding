@@ -101,6 +101,12 @@ describe("Decode", () => {
         const body = await decodeBuffer(content, 'GZIP');
         expect(body.toString()).to.equal('Gzip response');
     });
+
+    it('should decode base64 bodies', async () => {
+        const content = Buffer.from(Buffer.from('Base64 response').toString('base64'));
+        const body = await decodeBuffer(content, 'base64');
+        expect(body.toString()).to.equal('Base64 response');
+    });
 });
 
 describe("DecodeSync", () => {
@@ -164,5 +170,11 @@ describe("DecodeSync", () => {
         const content = zlib.gzipSync('Gzip response');
         const body = decodeBufferSync(content, 'GZIP');
         expect(body.toString()).to.equal('Gzip response');
+    });
+
+    it('should decode base64 bodies', () => {
+        const content = Buffer.from(Buffer.from('Base64 response').toString('base64'));
+        const body = decodeBufferSync(content, 'base64');
+        expect(body.toString()).to.equal('Base64 response');
     });
 });

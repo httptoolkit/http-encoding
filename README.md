@@ -7,10 +7,12 @@
 This package includes methods to decode & encode all commonly used HTTP content encodings, in a consistent format, usable in both Node.js and browsers.
 
 The supported codecs are:
+
 * Gzip
-* Deflate (decoded correctly with or without a zlib wrapper)
+* Raw deflate (with or without a zlib wrapper)
 * Brotli
 * Zstandard
+* Base64
 
 All encoding names are case-insensitive (although lowercase is generally standard). The 'identity', 'amz-1.0', 'none', 'text', 'binary', 'utf8' and 'utf-8' encodings are all supported as no-op encodings, passed through with no en/decoding at all. Only 'identity' is standard, but the others are all in common use regardless.
 
@@ -51,6 +53,8 @@ This library also exports consistent async methods to compress and decompress ea
 * `brotliDecompress`
 * `zstdCompress`
 * `zstdDecompress`
+* `encodeBase64`
+* `decodeBase64`
 
 Each method accepts a buffer and returns a promise for a buffer.
 

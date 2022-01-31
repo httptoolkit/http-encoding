@@ -9,7 +9,8 @@ export type SUPPORTED_ENCODING =
     | 'deflate'
     | 'x-deflate'
     | 'br'
-    | 'zstd';
+    | 'zstd'
+    | 'base64';
 
 export const gzip = promisify(zlib.gzip);
 export const gunzip = promisify(zlib.gunzip);
@@ -67,6 +68,20 @@ export const zstdCompress = async (buffer: Uint8Array, level?: number): Promise<
 export const zstdDecompress = async (buffer: Uint8Array): Promise<Uint8Array> => {
     return (await getZstd()).decompress(buffer);
 };
+
+const encodeBase64 = (buffer: Uint8Array): Uint8Array => {
+    return Buffer.from(asBuffer(buffer).toString('base64'), 'utf8');
+};
+
+const decodeBase64 = (buffer: Uint8Array): Uint8Array => {
+    return Buffer.from(asBuffer(buffer).toString('utf8'), 'base64');
+};
+
+// We export promisified versions for consistency
+const encodeBase64Promisified = promisify<Uint8Array, Uint8Array>(encodeBase64);
+export { encodeBase64Promisified as encodeBase64 };
+const decodeBase64Promisified = promisify<Uint8Array, Uint8Array>(decodeBase64);
+export { decodeBase64Promisified as decodeBase64 };
 
 const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {
     if (Buffer.isBuffer(input)) {
@@ -133,6 +148,8 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         return asBuffer(await brotliDecompress(bodyBuffer));
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdDecompress(bodyBuffer));
+    } else if (encoding === 'base64') {
+        return asBuffer(await decodeBase64(bodyBuffer));
     } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     }
@@ -176,6 +193,8 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         } else {
             return zlib.inflateRawSync(bodyBuffer);
         }
+    } else if (encoding === 'base64') {
+        return asBuffer(decodeBase64(bodyBuffer));
     } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     }
@@ -206,6 +225,8 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
         return asBuffer(await brotliCompress(bodyBuffer, level));
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdCompress(bodyBuffer, level));
+    } else if (encoding === 'base64') {
+        return asBuffer(encodeBase64(bodyBuffer));
     } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     } else {
