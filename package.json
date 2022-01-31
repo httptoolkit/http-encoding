@@ -46,7 +46,7 @@
   "homepage": "https://github.com/httptoolkit/http-encoding#readme",
   "dependencies": {
     "brotli-wasm": "^1.1.0",
-    "zstd-codec": "^0.1.2"
+    "zstd-codec": "^0.1.4"
   },
   "devDependencies": {
     "@types/chai": "^4.2.18",
