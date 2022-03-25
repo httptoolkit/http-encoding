@@ -1,6 +1,10 @@
 import * as zlib from 'zlib';
-import { promisify } from 'util';
 import type { ZstdStreaming } from 'zstd-codec';
+
+// We want promisify, but for easy browser usage downstream we want to avoid using Node's util
+// version. We replace it with pify, but we import util here purely to get the more accurate types.
+import { promisify as utilPromisify } from 'util';
+const promisify: typeof utilPromisify = require('pify');
 
 export type SUPPORTED_ENCODING =
     | 'identity'
