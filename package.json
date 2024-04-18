@@ -44,8 +44,11 @@
     "url": "https://github.com/httptoolkit/http-encoding/issues"
   },
   "homepage": "https://github.com/httptoolkit/http-encoding#readme",
+  "engines": {
+    "node": ">=v18.0.0"
+  },
   "dependencies": {
-    "brotli-wasm": "^1.3.0",
+    "brotli-wasm": "^3.0.0",
     "pify": "^5.0.0",
     "zstd-codec": "^0.1.4"
   },
