@@ -50,7 +50,7 @@
   "dependencies": {
     "brotli-wasm": "^3.0.0",
     "pify": "^5.0.0",
-    "zstd-codec": "^0.1.4"
+    "zstd-codec": "^0.1.5"
   },
   "devDependencies": {
     "@types/chai": "^4.2.18",
