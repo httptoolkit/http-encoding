@@ -1,10 +1,10 @@
 # http-encoding [![Build Status](https://github.com/httptoolkit/http-encoding/workflows/CI/badge.svg)](https://github.com/httptoolkit/http-encoding/actions) [![Available on NPM](https://img.shields.io/npm/v/http-encoding.svg)](https://npmjs.com/package/http-encoding)
 
-> _Part of [HTTP Toolkit](https://httptoolkit.tech): powerful tools for building, testing & debugging HTTP(S)_
+> _Part of [HTTP Toolkit](https://httptoolkit.com): powerful tools for building, testing & debugging HTTP(S)_
 
 **Everything you need to handle HTTP message body content-encoding**
 
-This package includes methods to decode & encode all commonly used HTTP content encodings, in a consistent format, usable in both Node.js and browsers.
+This package includes methods to decode & encode all commonly used HTTP content encodings, in a consistent format, usable in a wide range of Node.js versions and browsers.
 
 The supported codecs are:
 

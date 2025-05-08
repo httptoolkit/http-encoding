@@ -49,12 +49,39 @@ export const brotliDecompress = zlib.brotliDecompress
         return decompress(buffer);
     });
 
-// Zstd is a non-built-in wasm implementation that initializes async. We handle this by
-// loading it when the first zstd buffer is decompressed. That lets us defer loading
+// Browser Zstd is a non-built-in wasm implementation that initializes async. We handle this
+// by loading it when the first zstd buffer is decompressed. That lets us defer loading
 // until that point too, which is good since it's large-ish & rarely used.
 let zstd: Promise<ZstdStreaming> | undefined;
 const getZstd = async () => {
-    if (!zstd) {
+    // In Node 22.15 / 23.8+, we can use zstd built-in:
+    if (zlib.zstdCompress && zlib.zstdDecompress) {
+        return {
+            compress: (buffer: Uint8Array, level?: number) => {
+                return new Promise<Uint8Array>((resolve, reject) => {
+                    const options = level !== undefined
+                        ? { [zlib.constants.ZSTD_c_compressionLevel]: level }
+                        : {};
+
+                    zlib.zstdCompress(buffer, options, (err, result) => {
+                        if (err) reject(err);
+                        else resolve(result);
+                    });
+                });
+            },
+            decompress: (buffer: Uint8Array) => {
+                return new Promise<Uint8Array>((resolve, reject) => {
+                    zlib.zstdDecompress(buffer, (err, result) => {
+                        if (err) reject(err);
+                        else resolve(result);
+                    });
+                });
+            }
+        };
+    }
+
+    // In older Node and browsers, we fall back to zstd-codec:
+    else if (!zstd) {
         zstd = new Promise(async (resolve) => {
             const { ZstdCodec } = await import('zstd-codec');
             ZstdCodec.run((binding) => {
