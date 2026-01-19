@@ -115,6 +115,39 @@ export { encodeBase64Promisified as encodeBase64 };
 const decodeBase64Promisified = promisify<Uint8Array, Uint8Array>(decodeBase64);
 export { decodeBase64Promisified as decodeBase64 };
 
+// --- Streaming APIs ---
+
+// Lazily loaded to avoid bundling Node's stream polyfill for browsers
+let Duplex: typeof import('stream').Duplex | undefined;
+const getDuplex = () => {
+    if (!Duplex) {
+        Duplex = require('stream').Duplex;
+    }
+    return Duplex!;
+};
+
+type BufferSource = ArrayBufferView | ArrayBuffer;
+
+export function createGzipStream(): TransformStream<BufferSource, Uint8Array> {
+    // Use native CompressionStream where available:
+    if (typeof CompressionStream !== 'undefined') {
+        return new CompressionStream('gzip');
+    }
+    // Turn zlib node built-in into a web stream if not:
+    return getDuplex().toWeb(zlib.createGzip()) as TransformStream<BufferSource, Uint8Array>;
+}
+
+export function createGunzipStream(): TransformStream<BufferSource, Uint8Array> {
+    // Use native DecompressionStream where available:
+    if (typeof DecompressionStream !== 'undefined') {
+        return new DecompressionStream('gzip');
+    }
+    // Turn zlib node built-in into a web stream if not:
+    return getDuplex().toWeb(zlib.createGunzip()) as TransformStream<BufferSource, Uint8Array>;
+}
+
+// --- Buffer helpers ---
+
 const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {
     if (Buffer.isBuffer(input)) {
         return input;

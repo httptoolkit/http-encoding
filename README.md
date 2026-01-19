@@ -59,10 +59,17 @@ This library also exports consistent async methods to compress and decompress ea
 
 Each method accepts a buffer and returns a promise for a buffer.
 
+## Streaming methods
+
+This library also supports streaming decoding, using web de(compression) streams wherever possible.
+
+* `createGzipStream`
+* `createGunzipStream`
+
 ## Browser usage
 
 To use this in a browser, you'll need to use a bundler (e.g. Webpack) that can include standard Node.js polyfill packages, you may need to install those polyfill packages, and your bundler needs to support bundling WebAssembly (e.g. Webpack v4+).
 
-In Webpack v4 this should all work automatically. In Webpack v5 this will require explicit dependencies and configuration. See this package's own [test webpack config](./karma.conf.js#L14-L44) and [dev dependencies](./package.json) for a working example.
+In Webpack v4 this should all work automatically. In Webpack v5 and most other builders this will require explicit dependencies and configuration. See this package's own [test webpack config](./karma.conf.js#L14-L44) and [dev dependencies](./package.json) for a working example.
 
 Brotli and Zstandard are only supported in runtime environments that support WebAssembly. All WebAssembly packages are loaded on-demand and only when native methods (e.g. Node's `zlib.brotli*`) are not available.
