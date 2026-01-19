@@ -336,8 +336,8 @@ export function createZstdCompressStream(): TransformStream<BufferSource, Uint8A
         return getDuplex().toWeb(zlib.createZstdCompress()) as TransformStream<BufferSource, Uint8Array>;
     }
 
-    // Fallback: wrap zstd-codec
-    return createZstdCodecCompressStream();
+    // Fallback: use zstd-codec's Transform stream (requires 'stream' module/polyfill)
+    return createZstdCodecTransformCompressStream();
 }
 
 export function createZstdDecompressStream(): TransformStream<BufferSource, Uint8Array> {
@@ -356,69 +356,114 @@ export function createZstdDecompressStream(): TransformStream<BufferSource, Uint
         return getDuplex().toWeb(zlib.createZstdDecompress()) as TransformStream<BufferSource, Uint8Array>;
     }
 
-    // Fallback: wrap zstd-codec
-    return createZstdCodecDecompressStream();
+    // Fallback: use zstd-codec's Transform stream (requires 'stream' module/polyfill)
+    return createZstdCodecTransformDecompressStream();
 }
 
-// Cache for zstd-codec Streaming instance (loaded once, reused)
-let zstdStreaming: Promise<ZstdStreaming> | undefined;
-const getZstdStreaming = () => {
-    if (!zstdStreaming) {
-        zstdStreaming = new Promise(async (resolve) => {
-            const { ZstdCodec } = await import('zstd-codec');
-            ZstdCodec.run((zstd: { Streaming: new () => ZstdStreaming }) => {
-                resolve(new zstd.Streaming());
+// Cache for zstd-codec/lib/zstd-stream classes (lazily loaded)
+type ZstdStreamClasses = {
+    ZstdCompressTransform: new (level?: number) => import('stream').Transform;
+    ZstdDecompressTransform: new () => import('stream').Transform;
+};
+let zstdStreamClasses: Promise<ZstdStreamClasses> | undefined;
+const getZstdStreamClasses = () => {
+    if (!zstdStreamClasses) {
+        zstdStreamClasses = new Promise((resolve) => {
+            const zstdStream = require('zstd-codec/lib/zstd-stream');
+            zstdStream.run((classes: ZstdStreamClasses) => {
+                resolve(classes);
             });
         });
     }
-    return zstdStreaming;
+    return zstdStreamClasses;
 };
 
-// Note: zstd-codec doesn't expose true streaming APIs in browsers, so we buffer
-// chunks and process them at flush time. For large streams, native CompressionStream
-// or Node's zlib streaming should be preferred.
-function createZstdCodecCompressStream(): TransformStream<BufferSource, Uint8Array> {
-    const chunks: Uint8Array[] = [];
-    let totalSize = 0;
+function createZstdCodecTransformCompressStream(): TransformStream<BufferSource, Uint8Array> {
+    let compressTransform: import('stream').Transform;
+    const initPromise = getZstdStreamClasses().then((classes) => {
+        compressTransform = new classes.ZstdCompressTransform();
+    });
 
     return new TransformStream<BufferSource, Uint8Array>({
-        transform(chunk) {
+        async start() {
+            await initPromise;
+        },
+        transform(chunk, controller) {
             const input = new Uint8Array(
                 ArrayBuffer.isView(chunk) ? chunk.buffer : chunk,
                 ArrayBuffer.isView(chunk) ? chunk.byteOffset : 0,
                 ArrayBuffer.isView(chunk) ? chunk.byteLength : chunk.byteLength
             );
-            chunks.push(input);
-            totalSize += input.length;
+
+            return new Promise<void>((resolve, reject) => {
+                const onData = (data: Buffer) => {
+                    controller.enqueue(new Uint8Array(data));
+                };
+                compressTransform.once('error', reject);
+                compressTransform.on('data', onData);
+
+                compressTransform.write(input, (err) => {
+                    compressTransform.off('data', onData);
+                    compressTransform.off('error', reject);
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
         },
-        async flush(controller) {
-            const streaming = await getZstdStreaming();
-            const compressed = streaming.compressChunks(chunks, totalSize);
-            if (compressed) {
-                controller.enqueue(compressed);
-            }
+        flush(controller) {
+            return new Promise<void>((resolve, reject) => {
+                compressTransform.once('error', reject);
+                compressTransform.on('data', (data: Buffer) => {
+                    controller.enqueue(new Uint8Array(data));
+                });
+                compressTransform.once('end', resolve);
+                compressTransform.end();
+            });
         }
     });
 }
 
-function createZstdCodecDecompressStream(): TransformStream<BufferSource, Uint8Array> {
-    const chunks: Uint8Array[] = [];
+function createZstdCodecTransformDecompressStream(): TransformStream<BufferSource, Uint8Array> {
+    let decompressTransform: import('stream').Transform;
+    const initPromise = getZstdStreamClasses().then((classes) => {
+        decompressTransform = new classes.ZstdDecompressTransform();
+    });
 
     return new TransformStream<BufferSource, Uint8Array>({
-        transform(chunk) {
+        async start() {
+            await initPromise;
+        },
+        transform(chunk, controller) {
             const input = new Uint8Array(
                 ArrayBuffer.isView(chunk) ? chunk.buffer : chunk,
                 ArrayBuffer.isView(chunk) ? chunk.byteOffset : 0,
                 ArrayBuffer.isView(chunk) ? chunk.byteLength : chunk.byteLength
             );
-            chunks.push(input);
+
+            return new Promise<void>((resolve, reject) => {
+                const onData = (data: Buffer) => {
+                    controller.enqueue(new Uint8Array(data));
+                };
+                decompressTransform.once('error', reject);
+                decompressTransform.on('data', onData);
+
+                decompressTransform.write(input, (err) => {
+                    decompressTransform.off('data', onData);
+                    decompressTransform.off('error', reject);
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
         },
-        async flush(controller) {
-            const streaming = await getZstdStreaming();
-            const decompressed = streaming.decompressChunks(chunks);
-            if (decompressed) {
-                controller.enqueue(decompressed);
-            }
+        flush(controller) {
+            return new Promise<void>((resolve, reject) => {
+                decompressTransform.once('error', reject);
+                decompressTransform.on('data', (data: Buffer) => {
+                    controller.enqueue(new Uint8Array(data));
+                });
+                decompressTransform.once('end', resolve);
+                decompressTransform.end();
+            });
         }
     });
 }
