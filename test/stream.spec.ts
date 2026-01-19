@@ -302,7 +302,7 @@ describe("Streaming", () => {
             this.timeout(10000); // Can be slow
 
             const BROTLI_DATA_SIZE_KB = 2048;
-            const inputChunks = generateLargeData(BROTLI_DATA_SIZE_KB, false);
+            const inputChunks = generateLargeData(BROTLI_DATA_SIZE_KB);
             const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
                 createBrotliCompressStream(),
                 inputChunks
@@ -319,7 +319,7 @@ describe("Streaming", () => {
             this.timeout(10000); // Can be slow
 
             const BROTLI_DECOMPRESS_SIZE_KB = 1024; // 1MB
-            const originalData = Buffer.concat(generateLargeData(BROTLI_DECOMPRESS_SIZE_KB, false));
+            const originalData = Buffer.concat(generateLargeData(BROTLI_DECOMPRESS_SIZE_KB));
             const compressed = await brotliCompress(originalData);
 
             const chunkSize = 16 * 1024;
@@ -494,7 +494,7 @@ describe("Streaming", () => {
             // Create a 1MB buffer
             const size = 1024 * 1024;
             const largeData = new Uint8Array(size);
-            const rng = createSeededRng(0xDEADBEEF);
+            const rng = mulberry32(0xDEADBEEF);
             for (let i = 0; i < size; i++) {
                 largeData[i] = Math.floor(rng() * 256);
             }
@@ -626,7 +626,7 @@ describe("Streaming", () => {
             this.timeout(10000);
 
             // Use 4MB for base64 to ensure we get multiple batches (1.5MB batch size)
-            const inputChunks = generateLargeData(4096, false);
+            const inputChunks = generateLargeData(4096);
             const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
                 createBase64EncodeStream(),
                 inputChunks
@@ -644,7 +644,7 @@ describe("Streaming", () => {
             this.timeout(10000);
 
             // Generate random data, encode to base64, then decode via stream
-            const originalData = Buffer.concat(generateLargeData(4096, false));
+            const originalData = Buffer.concat(generateLargeData(4096));
             const encoded = await encodeBase64(originalData);
 
             const chunkSize = 64 * 1024;
@@ -717,39 +717,51 @@ const STREAMING_TEST_SIZE_KB = 256;
 // Helper to test true streaming behavior - verifies output arrives before all input is sent
 async function testTrueStreaming(
     transformStream: TransformStream<Uint8Array, Uint8Array>,
-    inputChunks: Uint8Array[]
+    inputChunks: Uint8Array[],
+    timeoutMs = 5000
 ): Promise<{ outputBeforeEnd: boolean; totalOutput: Uint8Array }> {
+    if (inputChunks.length < 2) {
+        throw new Error('testTrueStreaming requires at least 2 input chunks');
+    }
+
     const outputChunks: Uint8Array[] = [];
-    let outputReceivedBeforeEnd = false;
-    let inputComplete = false;
+
+    let resolveFirstOutput!: () => void;
+    const firstOutputReceived = new Promise<void>(resolve => {
+        resolveFirstOutput = resolve;
+    });
 
     const writer = transformStream.writable.getWriter();
     const reader = transformStream.readable.getReader();
 
-    // Start reading in background - this allows output to be collected as it arrives
+    // Start reading in background
     const readPromise = (async () => {
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             outputChunks.push(value);
-            if (!inputComplete) {
-                outputReceivedBeforeEnd = true;
-            }
+            if (outputChunks.length === 1) resolveFirstOutput();
         }
     })();
 
-    // Write chunks with small delays to allow output processing
-    for (const chunk of inputChunks) {
-        await writer.write(chunk);
-        await new Promise(resolve => setTimeout(resolve, 0));
+    // Write all chunks except the last
+    for (let i = 0; i < inputChunks.length - 1; i++) {
+        await writer.write(inputChunks[i]);
     }
 
-    inputComplete = true;
+    // Wait for output before writing final chunk
+    const outputBeforeEnd = await Promise.race([
+        firstOutputReceived.then(() => true),
+        new Promise<false>(resolve => setTimeout(() => resolve(false), timeoutMs))
+    ]);
+
+    // Write final chunk and close
+    await writer.write(inputChunks[inputChunks.length - 1]);
     await writer.close();
     await readPromise;
 
-    // Combine output chunks
-    const totalLength = outputChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    // Combine output
+    const totalLength = outputChunks.reduce((sum, c) => sum + c.length, 0);
     const totalOutput = new Uint8Array(totalLength);
     let offset = 0;
     for (const chunk of outputChunks) {
@@ -757,11 +769,11 @@ async function testTrueStreaming(
         offset += chunk.length;
     }
 
-    return { outputBeforeEnd: outputReceivedBeforeEnd, totalOutput };
+    return { outputBeforeEnd, totalOutput };
 }
 
-// Mulberry32: high-quality 32-bit seeded PRNG that produces incompressible output
-function createSeededRng(seed: number) {
+// Mulberry32: seeded PRNG for deterministic incompressible test data
+function mulberry32(seed: number) {
     return function(): number {
         let t = seed += 0x6D2B79F5;
         t = Math.imul(t ^ t >>> 15, t | 1);
@@ -770,29 +782,19 @@ function createSeededRng(seed: number) {
     };
 }
 
-// Generate large test data that will produce streaming output
-function generateLargeData(sizeKB: number, compressible = true): Uint8Array[] {
-    const chunkSize = 16 * 1024; // 16KB chunks
+// Generate deterministic incompressible test data in 16KB chunks
+function generateLargeData(sizeKB: number): Uint8Array[] {
+    const chunkSize = 16 * 1024;
     const totalSize = sizeKB * 1024;
     const chunks: Uint8Array[] = [];
-    const pattern = 'This is test data that will be repeated to create compressible content. ';
-
-    // Fixed seed for deterministic, reproducible test data
-    const rng = createSeededRng(0x12345678);
+    const rng = mulberry32(0x12345678);
 
     let remaining = totalSize;
     while (remaining > 0) {
         const size = Math.min(chunkSize, remaining);
         const chunk = new Uint8Array(size);
-        if (compressible) {
-            for (let i = 0; i < size; i++) {
-                chunk[i] = pattern.charCodeAt(i % pattern.length);
-            }
-        } else {
-            // Use seeded PRNG for deterministic incompressible data
-            for (let i = 0; i < size; i++) {
-                chunk[i] = Math.floor(rng() * 256);
-            }
+        for (let i = 0; i < size; i++) {
+            chunk[i] = Math.floor(rng() * 256);
         }
         chunks.push(chunk);
         remaining -= size;
