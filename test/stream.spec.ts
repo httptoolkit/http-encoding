@@ -9,7 +9,11 @@ import {
     createDeflateStream,
     createInflateStream,
     createDeflateRawStream,
-    createInflateRawStream
+    createInflateRawStream,
+    createBrotliCompressStream,
+    createBrotliDecompressStream,
+    brotliCompress,
+    brotliDecompress
 } from '../src/index';
 
 // Helper to collect all chunks from a ReadableStream into a single Uint8Array
@@ -195,6 +199,58 @@ describe("Streaming", () => {
             const result = await collectStream(decompressedStream);
 
             expect(Buffer.from(result).toString()).to.equal(original);
+        });
+    });
+
+    describe("Brotli", () => {
+        it('should compress data with brotli stream', async () => {
+            const input = Buffer.from('Hello streaming brotli world!');
+            const inputStream = createReadableStream(input);
+
+            const compressedStream = inputStream.pipeThrough(createBrotliCompressStream());
+            const compressed = await collectStream(compressedStream);
+
+            // Verify the compressed data can be decompressed
+            const decompressed = await brotliDecompress(compressed);
+            expect(Buffer.from(decompressed).toString()).to.equal('Hello streaming brotli world!');
+        });
+
+        it('should decompress brotli data with stream', async () => {
+            const original = 'Hello streaming brotli decompress world!';
+            const compressed = await brotliCompress(Buffer.from(original));
+            const inputStream = createReadableStream(new Uint8Array(compressed));
+
+            const decompressedStream = inputStream.pipeThrough(createBrotliDecompressStream());
+            const decompressed = await collectStream(decompressedStream);
+
+            expect(Buffer.from(decompressed).toString()).to.equal(original);
+        });
+
+        it('should handle round-trip compression and decompression', async () => {
+            const original = 'Round-trip brotli streaming test with some repeated data data data data';
+            const inputStream = createReadableStream(Buffer.from(original));
+
+            const compressedStream = inputStream.pipeThrough(createBrotliCompressStream());
+            const decompressedStream = compressedStream.pipeThrough(createBrotliDecompressStream());
+            const result = await collectStream(decompressedStream);
+
+            expect(Buffer.from(result).toString()).to.equal(original);
+        });
+
+        it('should handle large data', async () => {
+            const pattern = 'Brotli test pattern that will be repeated many times for compression. ';
+            const repeated = pattern.repeat(10000);
+            const inputStream = createReadableStream(Buffer.from(repeated));
+
+            const compressedStream = inputStream.pipeThrough(createBrotliCompressStream());
+            const compressed = await collectStream(compressedStream);
+
+            // Compressed should be smaller than original due to repetition
+            expect(compressed.length).to.be.lessThan(repeated.length);
+
+            // Verify decompression
+            const decompressed = await brotliDecompress(compressed);
+            expect(Buffer.from(decompressed).toString()).to.equal(repeated);
         });
     });
 });

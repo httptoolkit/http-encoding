@@ -69,6 +69,8 @@ This library also supports streaming encoding and decoding, returning web-standa
 * `createInflateStream`
 * `createDeflateRawStream`
 * `createInflateRawStream`
+* `createBrotliCompressStream`
+* `createBrotliDecompressStream`
 
 ## Browser usage
 

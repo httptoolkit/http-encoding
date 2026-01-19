@@ -190,6 +190,136 @@ export function createInflateRawStream(): TransformStream<BufferSource, Uint8Arr
     return getDuplex().toWeb(zlib.createInflateRaw()) as TransformStream<BufferSource, Uint8Array>;
 }
 
+export function createBrotliCompressStream(): TransformStream<BufferSource, Uint8Array> {
+    // Try native CompressionStream with brotli if available
+    if (typeof CompressionStream !== 'undefined') {
+        try {
+            // 'br' may not be in TS types yet, but is supported in some browsers
+            return new CompressionStream('br' as CompressionFormat);
+        } catch {
+            // Brotli not supported in this browser's CompressionStream
+        }
+    }
+
+    // Node: use zlib brotli if available
+    if (zlib.createBrotliCompress) {
+        return getDuplex().toWeb(zlib.createBrotliCompress()) as TransformStream<BufferSource, Uint8Array>;
+    }
+
+    // Fallback: wrap brotli-wasm
+    return createBrotliWasmCompressStream();
+}
+
+export function createBrotliDecompressStream(): TransformStream<BufferSource, Uint8Array> {
+    // Try native DecompressionStream with brotli if available
+    if (typeof DecompressionStream !== 'undefined') {
+        try {
+            // 'br' may not be in TS types yet, but is supported in some browsers
+            return new DecompressionStream('br' as CompressionFormat);
+        } catch {
+            // Brotli not supported in this browser's DecompressionStream
+        }
+    }
+
+    // Node: use zlib brotli if available
+    if (zlib.createBrotliDecompress) {
+        return getDuplex().toWeb(zlib.createBrotliDecompress()) as TransformStream<BufferSource, Uint8Array>;
+    }
+
+    // Fallback: wrap brotli-wasm
+    return createBrotliWasmDecompressStream();
+}
+
+const BROTLI_WASM_OUTPUT_SIZE = 1024 * 1024; // 1MB output buffer for streaming
+
+function createBrotliWasmCompressStream(): TransformStream<BufferSource, Uint8Array> {
+    type BrotliWasm = typeof import('brotli-wasm');
+    let brotliWasm: BrotliWasm;
+    let compressStream: InstanceType<BrotliWasm['CompressStream']>;
+    const brotliWasmPromise = import('brotli-wasm') as Promise<BrotliWasm>;
+
+    return new TransformStream<BufferSource, Uint8Array>({
+        async start() {
+            brotliWasm = await brotliWasmPromise;
+            compressStream = new brotliWasm.CompressStream();
+        },
+        transform(chunk, controller) {
+            const input = new Uint8Array(
+                ArrayBuffer.isView(chunk) ? chunk.buffer : chunk,
+                ArrayBuffer.isView(chunk) ? chunk.byteOffset : 0,
+                ArrayBuffer.isView(chunk) ? chunk.byteLength : chunk.byteLength
+            );
+
+            let offset = 0;
+            while (offset < input.length) {
+                const result = compressStream.compress(
+                    input.subarray(offset),
+                    BROTLI_WASM_OUTPUT_SIZE
+                );
+                if (result.buf.length > 0) {
+                    controller.enqueue(result.buf);
+                }
+                offset += result.input_offset;
+                if (result.code === brotliWasm.BrotliStreamResultCode.NeedsMoreInput) {
+                    break;
+                }
+            }
+        },
+        flush(controller) {
+            // Signal end of input and collect remaining output
+            while (true) {
+                const result = compressStream.compress(undefined, BROTLI_WASM_OUTPUT_SIZE);
+                if (result.buf.length > 0) {
+                    controller.enqueue(result.buf);
+                }
+                if (result.code !== brotliWasm.BrotliStreamResultCode.NeedsMoreOutput) {
+                    break;
+                }
+            }
+            compressStream.free();
+        }
+    });
+}
+
+function createBrotliWasmDecompressStream(): TransformStream<BufferSource, Uint8Array> {
+    type BrotliWasm = typeof import('brotli-wasm');
+    let brotliWasm: BrotliWasm;
+    let decompressStream: InstanceType<BrotliWasm['DecompressStream']>;
+    const brotliWasmPromise = import('brotli-wasm') as Promise<BrotliWasm>;
+
+    return new TransformStream<BufferSource, Uint8Array>({
+        async start() {
+            brotliWasm = await brotliWasmPromise;
+            decompressStream = new brotliWasm.DecompressStream();
+        },
+        transform(chunk, controller) {
+            const input = new Uint8Array(
+                ArrayBuffer.isView(chunk) ? chunk.buffer : chunk,
+                ArrayBuffer.isView(chunk) ? chunk.byteOffset : 0,
+                ArrayBuffer.isView(chunk) ? chunk.byteLength : chunk.byteLength
+            );
+
+            let offset = 0;
+            while (offset < input.length) {
+                const result = decompressStream.decompress(
+                    input.subarray(offset),
+                    BROTLI_WASM_OUTPUT_SIZE
+                );
+                if (result.buf.length > 0) {
+                    controller.enqueue(result.buf);
+                }
+                offset += result.input_offset;
+                if (result.code === brotliWasm.BrotliStreamResultCode.NeedsMoreInput) {
+                    break;
+                }
+            }
+        },
+        flush() {
+            decompressStream.free();
+        }
+    });
+}
+
 // --- Buffer helpers ---
 
 const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {
