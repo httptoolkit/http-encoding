@@ -7,7 +7,7 @@ import chaiAsPromised = require("chai-as-promised");
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
-import { encodeBuffer } from '../src/index';
+import { encodeBuffer, deflateRaw } from '../src/index';
 
 function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
     return buffer.buffer.slice(buffer.byteOffset, buffer.byteLength + buffer.byteOffset)
@@ -55,6 +55,11 @@ describe("Encode", () => {
     it('should encode zlib deflate bodies', async () => {
         const body = await encodeBuffer(Buffer.from('Response to deflate'), 'deflate', { level: 1 });
         expect(zlib.inflateSync(body).toString()).to.equal('Response to deflate');
+    });
+
+    it('should encode raw deflate bodies', async () => {
+        const body = await deflateRaw(Buffer.from('Response to raw deflate'), { level: 1 });
+        expect(zlib.inflateRawSync(body).toString()).to.equal('Response to raw deflate');
     });
 
     it('should encode brotli bodies', async () => {

@@ -19,6 +19,7 @@ export type SUPPORTED_ENCODING =
 export const gzip = promisify(zlib.gzip);
 export const gunzip = promisify(zlib.gunzip);
 export const deflate = promisify(zlib.deflate);
+export const deflateRaw = promisify(zlib.deflateRaw);
 export const inflate = promisify(zlib.inflate);
 export const inflateRaw = promisify(zlib.inflateRaw);
 

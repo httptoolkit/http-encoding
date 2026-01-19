@@ -47,6 +47,7 @@ This library also exports consistent async methods to compress and decompress ea
 * `gzip`
 * `gunzip`
 * `deflate`
+* `deflateRaw`
 * `inflate`
 * `inflateRaw`
 * `brotliCompress`
