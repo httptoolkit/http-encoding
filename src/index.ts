@@ -101,19 +101,131 @@ export const zstdDecompress = async (buffer: Uint8Array): Promise<Uint8Array> =>
     return (await getZstd()).decompress(buffer);
 };
 
-const encodeBase64 = (buffer: Uint8Array): Uint8Array => {
-    return Buffer.from(asBuffer(buffer).toString('base64'), 'utf8');
+// --- Base64 Implementation ---
+
+// Check if Buffer is available (Node.js environment)
+const hasBuffer = typeof Buffer !== 'undefined' && typeof Buffer.from === 'function';
+
+// Lookup tables for browser fallback (no Buffer available)
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const BASE64_CHAR_CODES = new Uint8Array(64);
+for (let i = 0; i < 64; i++) {
+    BASE64_CHAR_CODES[i] = BASE64_CHARS.charCodeAt(i);
+}
+
+// Decode lookup: maps ASCII code to 6-bit value, 255 = invalid, 254 = whitespace (skip)
+const BASE64_DECODE_LOOKUP = new Uint8Array(256).fill(255);
+for (let i = 0; i < 64; i++) {
+    BASE64_DECODE_LOOKUP[BASE64_CHARS.charCodeAt(i)] = i;
+}
+// URL-safe variants: - for +, _ for /
+BASE64_DECODE_LOOKUP['-'.charCodeAt(0)] = 62;
+BASE64_DECODE_LOOKUP['_'.charCodeAt(0)] = 63;
+// Whitespace: skip
+BASE64_DECODE_LOOKUP[' '.charCodeAt(0)] = 254;
+BASE64_DECODE_LOOKUP['\t'.charCodeAt(0)] = 254;
+BASE64_DECODE_LOOKUP['\n'.charCodeAt(0)] = 254;
+BASE64_DECODE_LOOKUP['\r'.charCodeAt(0)] = 254;
+// Padding: treat as 0 for decoding purposes
+BASE64_DECODE_LOOKUP['='.charCodeAt(0)] = 0;
+
+function encodeBase64Lookup(bytes: Uint8Array): Uint8Array {
+    const len = bytes.length;
+    const resultLen = Math.ceil(len / 3) * 4;
+    const result = new Uint8Array(resultLen);
+
+    let j = 0;
+    let i = 0;
+    for (; i + 2 < len; i += 3) {
+        const a = bytes[i], b = bytes[i + 1], c = bytes[i + 2];
+        result[j++] = BASE64_CHAR_CODES[a >> 2];
+        result[j++] = BASE64_CHAR_CODES[((a & 3) << 4) | (b >> 4)];
+        result[j++] = BASE64_CHAR_CODES[((b & 15) << 2) | (c >> 6)];
+        result[j++] = BASE64_CHAR_CODES[c & 63];
+    }
+
+    // Handle remaining 1 or 2 bytes
+    if (i < len) {
+        const a = bytes[i];
+        result[j++] = BASE64_CHAR_CODES[a >> 2];
+        if (i + 1 < len) {
+            const b = bytes[i + 1];
+            result[j++] = BASE64_CHAR_CODES[((a & 3) << 4) | (b >> 4)];
+            result[j++] = BASE64_CHAR_CODES[(b & 15) << 2];
+        } else {
+            result[j++] = BASE64_CHAR_CODES[(a & 3) << 4];
+            result[j++] = 61; // '='
+        }
+        result[j++] = 61; // '='
+    }
+
+    return result;
+}
+
+function decodeBase64Lookup(base64Bytes: Uint8Array): Uint8Array {
+    // First pass: count valid chars
+    let validCount = 0;
+    for (let i = 0; i < base64Bytes.length; i++) {
+        const v = BASE64_DECODE_LOOKUP[base64Bytes[i]];
+        if (v < 64) {
+            validCount++;
+        } else if (v === 255) {
+            throw new Error(`Invalid base64 character at position ${i}: ${base64Bytes[i]}`);
+        }
+        // v === 254 is whitespace, skip
+    }
+
+    // Calculate output size (each 4 chars = 3 bytes, minus padding)
+    const resultLen = Math.floor(validCount / 4) * 3 +
+        (validCount % 4 === 3 ? 2 : validCount % 4 === 2 ? 1 : 0);
+    const result = new Uint8Array(resultLen);
+
+    let j = 0;
+    let buffer = 0;
+    let bufferLen = 0;
+
+    for (let i = 0; i < base64Bytes.length && j < resultLen; i++) {
+        const v = BASE64_DECODE_LOOKUP[base64Bytes[i]];
+        if (v >= 64) continue; // skip whitespace and padding
+
+        buffer = (buffer << 6) | v;
+        bufferLen += 6;
+
+        if (bufferLen >= 8) {
+            bufferLen -= 8;
+            result[j++] = (buffer >> bufferLen) & 0xff;
+        }
+    }
+
+    return result;
+}
+
+// Core sync implementation - uses Buffer when available, lookup table otherwise
+// Used by both sync exports and streaming internals
+function encodeBase64Sync(bytes: Uint8Array): Uint8Array {
+    if (hasBuffer) {
+        const b64String = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64');
+        return Buffer.from(b64String, 'utf8');
+    }
+    return encodeBase64Lookup(bytes);
+}
+
+function decodeBase64Sync(base64Bytes: Uint8Array): Uint8Array {
+    if (hasBuffer) {
+        const b64String = Buffer.from(base64Bytes.buffer, base64Bytes.byteOffset, base64Bytes.byteLength).toString('utf8');
+        return Buffer.from(b64String, 'base64');
+    }
+    return decodeBase64Lookup(base64Bytes);
+}
+
+// Exported async versions for consistency with other codecs
+export const encodeBase64 = (buffer: Uint8Array): Promise<Uint8Array> => {
+    return Promise.resolve(encodeBase64Sync(buffer));
 };
 
-const decodeBase64 = (buffer: Uint8Array): Uint8Array => {
-    return Buffer.from(asBuffer(buffer).toString('utf8'), 'base64');
+export const decodeBase64 = (buffer: Uint8Array): Promise<Uint8Array> => {
+    return Promise.resolve(decodeBase64Sync(buffer));
 };
-
-// We export promisified versions for consistency
-const encodeBase64Promisified = promisify<Uint8Array, Uint8Array>(encodeBase64);
-export { encodeBase64Promisified as encodeBase64 };
-const decodeBase64Promisified = promisify<Uint8Array, Uint8Array>(decodeBase64);
-export { decodeBase64Promisified as decodeBase64 };
 
 // --- Streaming APIs ---
 
@@ -468,6 +580,156 @@ function createZstdCodecTransformDecompressStream(): TransformStream<BufferSourc
     });
 }
 
+// --- Base64 Streaming Functions ---
+
+// Batch size for base64 streaming (must be divisible by 3 for encoding)
+// 1.5MB gives ~5-15ms processing time per batch
+const BASE64_BATCH_SIZE = 1536 * 1024;
+
+export function createBase64EncodeStream(): TransformStream<BufferSource, Uint8Array> {
+    let leftover = new Uint8Array(0); // 0-2 bytes from previous chunk
+    let isFirstBatch = true;
+
+    return new TransformStream<BufferSource, Uint8Array>({
+        async transform(chunk, controller) {
+            const input = new Uint8Array(
+                ArrayBuffer.isView(chunk) ? chunk.buffer : chunk,
+                ArrayBuffer.isView(chunk) ? chunk.byteOffset : 0,
+                ArrayBuffer.isView(chunk) ? chunk.byteLength : chunk.byteLength
+            );
+
+            // Combine leftover with new input
+            const combined = new Uint8Array(leftover.length + input.length);
+            combined.set(leftover, 0);
+            combined.set(input, leftover.length);
+
+            // Process in batches, keeping bytes that don't align to 3
+            let offset = 0;
+            while (offset + 3 <= combined.length) {
+                const batchEnd = Math.min(offset + BASE64_BATCH_SIZE, combined.length);
+                // Round down to multiple of 3
+                const alignedEnd = offset + Math.floor((batchEnd - offset) / 3) * 3;
+
+                if (alignedEnd > offset) {
+                    const batch = combined.subarray(offset, alignedEnd);
+                    const encoded = encodeBase64Sync(batch);
+                    controller.enqueue(encoded);
+                    offset = alignedEnd;
+
+                    // Yield to event loop between batches (skip first to reduce latency for small data)
+                    if (!isFirstBatch) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                    }
+                    isFirstBatch = false;
+                } else {
+                    break;
+                }
+            }
+
+            // Keep remaining 0-2 bytes for next chunk
+            leftover = combined.subarray(offset);
+        },
+        flush(controller) {
+            // Encode any remaining bytes with padding
+            if (leftover.length > 0) {
+                const encoded = encodeBase64Sync(leftover);
+                controller.enqueue(encoded);
+            }
+        }
+    });
+}
+
+export function createBase64DecodeStream(): TransformStream<BufferSource, Uint8Array> {
+    let leftover = new Uint8Array(0); // 0-3 chars from previous chunk
+    let isFirstBatch = true;
+
+    return new TransformStream<BufferSource, Uint8Array>({
+        async transform(chunk, controller) {
+            const input = new Uint8Array(
+                ArrayBuffer.isView(chunk) ? chunk.buffer : chunk,
+                ArrayBuffer.isView(chunk) ? chunk.byteOffset : 0,
+                ArrayBuffer.isView(chunk) ? chunk.byteLength : chunk.byteLength
+            );
+
+            // Combine leftover with new input
+            const combined = new Uint8Array(leftover.length + input.length);
+            combined.set(leftover, 0);
+            combined.set(input, leftover.length);
+
+            // Find how many valid base64 chars we have (skip whitespace)
+            // We need to process in groups of 4 chars
+            let validCount = 0;
+            let lastValidIndex = -1;
+            for (let i = 0; i < combined.length; i++) {
+                const v = BASE64_DECODE_LOOKUP[combined[i]];
+                if (v < 64 || combined[i] === 61) { // valid char or padding
+                    validCount++;
+                    lastValidIndex = i;
+                } else if (v === 255) {
+                    throw new Error(`Invalid base64 character at position ${i}: ${combined[i]}`);
+                }
+                // v === 254 is whitespace, skip
+            }
+
+            // Process complete groups of 4
+            const completeGroups = Math.floor(validCount / 4);
+            if (completeGroups > 0) {
+                // Find the byte position after the last complete group
+                let groupsFound = 0;
+                let processEnd = 0;
+                for (let i = 0; i < combined.length && groupsFound < completeGroups * 4; i++) {
+                    const v = BASE64_DECODE_LOOKUP[combined[i]];
+                    if (v < 64 || combined[i] === 61) {
+                        groupsFound++;
+                        processEnd = i + 1;
+                    }
+                }
+
+                // Process in batches
+                let offset = 0;
+                while (offset < processEnd) {
+                    const batchEnd = Math.min(offset + BASE64_BATCH_SIZE, processEnd);
+                    const batch = combined.subarray(offset, batchEnd);
+                    const decoded = decodeBase64Sync(batch);
+                    if (decoded.length > 0) {
+                        controller.enqueue(decoded);
+                    }
+                    offset = batchEnd;
+
+                    // Yield to event loop between batches
+                    if (!isFirstBatch && offset < processEnd) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                    }
+                    isFirstBatch = false;
+                }
+
+                // Keep remaining bytes for next chunk
+                leftover = combined.subarray(processEnd);
+            } else {
+                // Not enough for a complete group, keep everything
+                leftover = combined;
+            }
+        },
+        flush(controller) {
+            // Decode any remaining chars (handles missing padding)
+            if (leftover.length > 0) {
+                // Count valid chars
+                let validCount = 0;
+                for (let i = 0; i < leftover.length; i++) {
+                    const v = BASE64_DECODE_LOOKUP[leftover[i]];
+                    if (v < 64) validCount++;
+                }
+                if (validCount > 0) {
+                    const decoded = decodeBase64Sync(leftover);
+                    if (decoded.length > 0) {
+                        controller.enqueue(decoded);
+                    }
+                }
+            }
+        }
+    });
+}
+
 // --- Buffer helpers ---
 
 const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {
@@ -536,7 +798,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdDecompress(bodyBuffer));
     } else if (encoding === 'base64') {
-        return asBuffer(await decodeBase64(bodyBuffer));
+        return asBuffer(decodeBase64Sync(bodyBuffer));
     } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     }
@@ -581,7 +843,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
             return zlib.inflateRawSync(bodyBuffer);
         }
     } else if (encoding === 'base64') {
-        return asBuffer(decodeBase64(bodyBuffer));
+        return asBuffer(decodeBase64Sync(bodyBuffer));
     } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     }
@@ -613,7 +875,7 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
     } else if (encoding === 'zstd') {
         return asBuffer(await zstdCompress(bodyBuffer, level));
     } else if (encoding === 'base64') {
-        return asBuffer(encodeBase64(bodyBuffer));
+        return asBuffer(encodeBase64Sync(bodyBuffer));
     } else if (IDENTITY_ENCODINGS.includes(encoding)) {
         return asBuffer(bodyBuffer);
     } else {

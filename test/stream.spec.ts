@@ -17,7 +17,11 @@ import {
     createZstdCompressStream,
     createZstdDecompressStream,
     zstdCompress,
-    zstdDecompress
+    zstdDecompress,
+    createBase64EncodeStream,
+    createBase64DecodeStream,
+    encodeBase64,
+    decodeBase64
 } from '../src/index';
 
 describe("Streaming", () => {
@@ -418,6 +422,259 @@ describe("Streaming", () => {
 
             expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
             expect(totalOutput.length).to.equal(originalData.length);
+        });
+    });
+
+    describe("Base64", () => {
+        it('should encode data with base64 stream', async () => {
+            const input = Buffer.from('Hello streaming base64 world!');
+            const inputStream = createReadableStream(input);
+
+            const encodedStream = inputStream.pipeThrough(createBase64EncodeStream());
+            const encoded = await collectStream(encodedStream);
+
+            // Verify the encoded data matches expected base64
+            expect(Buffer.from(encoded).toString('utf8')).to.equal('SGVsbG8gc3RyZWFtaW5nIGJhc2U2NCB3b3JsZCE=');
+        });
+
+        it('should decode base64 data with stream', async () => {
+            const original = 'Hello streaming base64 decode world!';
+            const encoded = Buffer.from(original).toString('base64');
+            const inputStream = createReadableStream(Buffer.from(encoded, 'utf8'));
+
+            const decodedStream = inputStream.pipeThrough(createBase64DecodeStream());
+            const decoded = await collectStream(decodedStream);
+
+            expect(Buffer.from(decoded).toString()).to.equal(original);
+        });
+
+        it('should handle round-trip encoding and decoding', async () => {
+            const original = Buffer.from([
+                0x52, 0x6f, 0x75, 0x6e, 0x64, 0x2d, 0x74, 0x72, 0x69, 0x70, 0x20, // "Round-trip "
+                0x00, 0x01, 0x02, 0xff, 0xfe, 0x80, 0x7f // binary data
+            ]);
+            const inputStream = createReadableStream(original);
+
+            const encodedStream = inputStream.pipeThrough(createBase64EncodeStream());
+            const decodedStream = encodedStream.pipeThrough(createBase64DecodeStream());
+            const result = await collectStream(decodedStream);
+
+            expect(Buffer.from(result).equals(original)).to.equal(true);
+        });
+
+        it('should handle multiple chunks', async () => {
+            const chunks = ['chunk1', 'chunk2', 'chunk3', 'chunk4'];
+            const inputStream = new ReadableStream<Uint8Array>({
+                start(controller) {
+                    for (const chunk of chunks) {
+                        controller.enqueue(Buffer.from(chunk));
+                    }
+                    controller.close();
+                }
+            });
+
+            const encodedStream = inputStream.pipeThrough(createBase64EncodeStream());
+            const decodedStream = encodedStream.pipeThrough(createBase64DecodeStream());
+            const result = await collectStream(decodedStream);
+
+            expect(Buffer.from(result).toString()).to.equal(chunks.join(''));
+        });
+
+        it('should handle empty input', async () => {
+            const inputStream = createReadableStream(new Uint8Array(0));
+
+            const encodedStream = inputStream.pipeThrough(createBase64EncodeStream());
+            const decodedStream = encodedStream.pipeThrough(createBase64DecodeStream());
+            const result = await collectStream(decodedStream);
+
+            expect(result.length).to.equal(0);
+        });
+
+        it('should handle large data', async () => {
+            // Create a 1MB buffer
+            const size = 1024 * 1024;
+            const largeData = new Uint8Array(size);
+            const rng = createSeededRng(0xDEADBEEF);
+            for (let i = 0; i < size; i++) {
+                largeData[i] = Math.floor(rng() * 256);
+            }
+
+            const inputStream = createReadableStream(largeData);
+
+            const encodedStream = inputStream.pipeThrough(createBase64EncodeStream());
+            const encoded = await collectStream(encodedStream);
+
+            // Base64 encoded size should be ~4/3 of original
+            expect(encoded.length).to.equal(Math.ceil(size / 3) * 4);
+
+            // Verify decoding
+            const decodedStream = createReadableStream(encoded).pipeThrough(createBase64DecodeStream());
+            const decoded = await collectStream(decodedStream);
+            expect(decoded.length).to.equal(size);
+            expect(Buffer.from(decoded).equals(Buffer.from(largeData))).to.equal(true);
+        });
+
+        it('should decode URL-safe base64', async () => {
+            // URL-safe base64 uses - instead of + and _ instead of /
+            // Bytes that produce both + and / in standard base64:
+            // [0xfb, 0xff, 0xbf] → ++/+ (has both + and /)
+            const original = Buffer.from([0xfb, 0xff, 0xbf]);
+            const standardB64 = original.toString('base64');
+            expect(standardB64).to.include('+');
+            expect(standardB64).to.include('/');
+
+            // Convert to URL-safe: + → -, / → _
+            const urlSafeB64 = standardB64.replace(/\+/g, '-').replace(/\//g, '_');
+
+            // Decode the URL-safe version
+            const inputStream = createReadableStream(Buffer.from(urlSafeB64, 'utf8'));
+            const decodedStream = inputStream.pipeThrough(createBase64DecodeStream());
+            const decoded = await collectStream(decodedStream);
+
+            // Should decode to same value as original
+            expect(Buffer.from(decoded).equals(original)).to.equal(true);
+        });
+
+        it('should decode base64 with whitespace', async () => {
+            const original = 'Hello world!';
+            const b64 = Buffer.from(original).toString('base64');
+            // Add various whitespace characters
+            const b64WithWhitespace = b64.slice(0, 4) + ' ' + b64.slice(4, 8) + '\n' +
+                b64.slice(8, 12) + '\t' + b64.slice(12) + '\r\n';
+
+            const inputStream = createReadableStream(Buffer.from(b64WithWhitespace, 'utf8'));
+            const decodedStream = inputStream.pipeThrough(createBase64DecodeStream());
+            const decoded = await collectStream(decodedStream);
+
+            expect(Buffer.from(decoded).toString()).to.equal(original);
+        });
+
+        it('should handle base64 without padding', async () => {
+            const original = 'Hi'; // 2 bytes = 3 base64 chars without padding
+            const b64WithPadding = Buffer.from(original).toString('base64');
+            expect(b64WithPadding).to.equal('SGk=');
+
+            // Strip the padding
+            const b64NoPadding = 'SGk';
+
+            const inputStream = createReadableStream(Buffer.from(b64NoPadding, 'utf8'));
+            const decodedStream = inputStream.pipeThrough(createBase64DecodeStream());
+            const decoded = await collectStream(decodedStream);
+
+            expect(Buffer.from(decoded).toString()).to.equal(original);
+        });
+
+        it('should handle chunks that split base64 groups', async () => {
+            // Create data that will be split across chunk boundaries
+            const original = 'ABCDEFGHIJKLMNOP';
+            const b64 = Buffer.from(original).toString('base64');
+
+            // Split the base64 string into awkward chunks (not aligned to 4 chars)
+            const chunks = [
+                b64.slice(0, 3),  // 3 chars - not a complete group
+                b64.slice(3, 7),  // 4 chars - but starts mid-group
+                b64.slice(7, 10), // 3 chars
+                b64.slice(10)     // rest
+            ];
+
+            const inputStream = new ReadableStream<Uint8Array>({
+                start(controller) {
+                    for (const chunk of chunks) {
+                        controller.enqueue(Buffer.from(chunk, 'utf8'));
+                    }
+                    controller.close();
+                }
+            });
+
+            const decodedStream = inputStream.pipeThrough(createBase64DecodeStream());
+            const decoded = await collectStream(decodedStream);
+
+            expect(Buffer.from(decoded).toString()).to.equal(original);
+        });
+
+        it('should handle chunks that split binary bytes in encoding', async function () {
+            this.timeout(5000);
+
+            // Base64 encoding works on 3-byte groups, so test splitting at non-3 boundaries
+            const original = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+            const chunks = [
+                original.subarray(0, 2),   // 2 bytes - not a complete group
+                original.subarray(2, 5),   // 3 bytes - but starts mid-group
+                original.subarray(5, 7),   // 2 bytes
+                original.subarray(7)       // rest (3 bytes)
+            ];
+
+            const inputStream = new ReadableStream<Uint8Array>({
+                start(controller) {
+                    for (const chunk of chunks) {
+                        controller.enqueue(chunk);
+                    }
+                    controller.close();
+                }
+            });
+
+            const encodedStream = inputStream.pipeThrough(createBase64EncodeStream());
+            const encoded = await collectStream(encodedStream);
+
+            // Verify round-trip
+            const decoded = await decodeBase64(encoded);
+            expect(Buffer.from(decoded).equals(Buffer.from(original))).to.equal(true);
+        });
+
+        it('should produce incremental output during encoding', async function () {
+            this.timeout(10000);
+
+            // Use 4MB for base64 to ensure we get multiple batches (1.5MB batch size)
+            const inputChunks = generateLargeData(4096, false);
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createBase64EncodeStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+
+            // Verify the output is valid base64
+            const decoded = await decodeBase64(totalOutput);
+            const expectedSize = inputChunks.reduce((sum, c) => sum + c.length, 0);
+            expect(decoded.length).to.equal(expectedSize);
+        });
+
+        it('should produce incremental output during decoding', async function () {
+            this.timeout(10000);
+
+            // Generate random data, encode to base64, then decode via stream
+            const originalData = Buffer.concat(generateLargeData(4096, false));
+            const encoded = await encodeBase64(originalData);
+
+            const chunkSize = 64 * 1024;
+            const inputChunks: Uint8Array[] = [];
+            for (let i = 0; i < encoded.length; i += chunkSize) {
+                inputChunks.push(new Uint8Array(encoded.buffer, encoded.byteOffset + i,
+                    Math.min(chunkSize, encoded.length - i)));
+            }
+
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createBase64DecodeStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+            expect(totalOutput.length).to.equal(originalData.length);
+        });
+
+        it('should reject invalid base64 characters', async () => {
+            const invalidB64 = Buffer.from('SGVs#G8=', 'utf8'); // # is invalid
+            const inputStream = createReadableStream(invalidB64);
+
+            const decodedStream = inputStream.pipeThrough(createBase64DecodeStream());
+
+            try {
+                await collectStream(decodedStream);
+                expect.fail('Expected error for invalid base64');
+            } catch (err: any) {
+                expect(err.message).to.include('Invalid base64');
+            }
         });
     });
 });
