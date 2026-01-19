@@ -13,7 +13,11 @@ import {
     createBrotliCompressStream,
     createBrotliDecompressStream,
     brotliCompress,
-    brotliDecompress
+    brotliDecompress,
+    createZstdCompressStream,
+    createZstdDecompressStream,
+    zstdCompress,
+    zstdDecompress
 } from '../src/index';
 
 // Helper to collect all chunks from a ReadableStream into a single Uint8Array
@@ -250,6 +254,58 @@ describe("Streaming", () => {
 
             // Verify decompression
             const decompressed = await brotliDecompress(compressed);
+            expect(Buffer.from(decompressed).toString()).to.equal(repeated);
+        });
+    });
+
+    describe("Zstd", () => {
+        it('should compress data with zstd stream', async () => {
+            const input = Buffer.from('Hello streaming zstd world!');
+            const inputStream = createReadableStream(input);
+
+            const compressedStream = inputStream.pipeThrough(createZstdCompressStream());
+            const compressed = await collectStream(compressedStream);
+
+            // Verify the compressed data can be decompressed
+            const decompressed = await zstdDecompress(compressed);
+            expect(Buffer.from(decompressed).toString()).to.equal('Hello streaming zstd world!');
+        });
+
+        it('should decompress zstd data with stream', async () => {
+            const original = 'Hello streaming zstd decompress world!';
+            const compressed = await zstdCompress(Buffer.from(original));
+            const inputStream = createReadableStream(new Uint8Array(compressed));
+
+            const decompressedStream = inputStream.pipeThrough(createZstdDecompressStream());
+            const decompressed = await collectStream(decompressedStream);
+
+            expect(Buffer.from(decompressed).toString()).to.equal(original);
+        });
+
+        it('should handle round-trip compression and decompression', async () => {
+            const original = 'Round-trip zstd streaming test with some repeated data data data data';
+            const inputStream = createReadableStream(Buffer.from(original));
+
+            const compressedStream = inputStream.pipeThrough(createZstdCompressStream());
+            const decompressedStream = compressedStream.pipeThrough(createZstdDecompressStream());
+            const result = await collectStream(decompressedStream);
+
+            expect(Buffer.from(result).toString()).to.equal(original);
+        });
+
+        it('should handle large data', async () => {
+            const pattern = 'Zstd test pattern that will be repeated many times for compression. ';
+            const repeated = pattern.repeat(10000);
+            const inputStream = createReadableStream(Buffer.from(repeated));
+
+            const compressedStream = inputStream.pipeThrough(createZstdCompressStream());
+            const compressed = await collectStream(compressedStream);
+
+            // Compressed should be smaller than original due to repetition
+            expect(compressed.length).to.be.lessThan(repeated.length);
+
+            // Verify decompression
+            const decompressed = await zstdDecompress(compressed);
             expect(Buffer.from(decompressed).toString()).to.equal(repeated);
         });
     });

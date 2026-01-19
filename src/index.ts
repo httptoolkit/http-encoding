@@ -320,6 +320,109 @@ function createBrotliWasmDecompressStream(): TransformStream<BufferSource, Uint8
     });
 }
 
+export function createZstdCompressStream(): TransformStream<BufferSource, Uint8Array> {
+    // Try native CompressionStream with zstd if available
+    if (typeof CompressionStream !== 'undefined') {
+        try {
+            // 'zstd' may not be in TS types yet, but is supported in some browsers
+            return new CompressionStream('zstd' as CompressionFormat);
+        } catch {
+            // Zstd not supported in this browser's CompressionStream
+        }
+    }
+
+    // Node 22.15+: use zlib zstd streaming if available
+    if (zlib.createZstdCompress) {
+        return getDuplex().toWeb(zlib.createZstdCompress()) as TransformStream<BufferSource, Uint8Array>;
+    }
+
+    // Fallback: wrap zstd-codec
+    return createZstdCodecCompressStream();
+}
+
+export function createZstdDecompressStream(): TransformStream<BufferSource, Uint8Array> {
+    // Try native DecompressionStream with zstd if available
+    if (typeof DecompressionStream !== 'undefined') {
+        try {
+            // 'zstd' may not be in TS types yet, but is supported in some browsers
+            return new DecompressionStream('zstd' as CompressionFormat);
+        } catch {
+            // Zstd not supported in this browser's DecompressionStream
+        }
+    }
+
+    // Node 22.15+: use zlib zstd streaming if available
+    if (zlib.createZstdDecompress) {
+        return getDuplex().toWeb(zlib.createZstdDecompress()) as TransformStream<BufferSource, Uint8Array>;
+    }
+
+    // Fallback: wrap zstd-codec
+    return createZstdCodecDecompressStream();
+}
+
+// Cache for zstd-codec Streaming instance (loaded once, reused)
+let zstdStreaming: Promise<ZstdStreaming> | undefined;
+const getZstdStreaming = () => {
+    if (!zstdStreaming) {
+        zstdStreaming = new Promise(async (resolve) => {
+            const { ZstdCodec } = await import('zstd-codec');
+            ZstdCodec.run((zstd: { Streaming: new () => ZstdStreaming }) => {
+                resolve(new zstd.Streaming());
+            });
+        });
+    }
+    return zstdStreaming;
+};
+
+// Note: zstd-codec doesn't expose true streaming APIs in browsers, so we buffer
+// chunks and process them at flush time. For large streams, native CompressionStream
+// or Node's zlib streaming should be preferred.
+function createZstdCodecCompressStream(): TransformStream<BufferSource, Uint8Array> {
+    const chunks: Uint8Array[] = [];
+    let totalSize = 0;
+
+    return new TransformStream<BufferSource, Uint8Array>({
+        transform(chunk) {
+            const input = new Uint8Array(
+                ArrayBuffer.isView(chunk) ? chunk.buffer : chunk,
+                ArrayBuffer.isView(chunk) ? chunk.byteOffset : 0,
+                ArrayBuffer.isView(chunk) ? chunk.byteLength : chunk.byteLength
+            );
+            chunks.push(input);
+            totalSize += input.length;
+        },
+        async flush(controller) {
+            const streaming = await getZstdStreaming();
+            const compressed = streaming.compressChunks(chunks, totalSize);
+            if (compressed) {
+                controller.enqueue(compressed);
+            }
+        }
+    });
+}
+
+function createZstdCodecDecompressStream(): TransformStream<BufferSource, Uint8Array> {
+    const chunks: Uint8Array[] = [];
+
+    return new TransformStream<BufferSource, Uint8Array>({
+        transform(chunk) {
+            const input = new Uint8Array(
+                ArrayBuffer.isView(chunk) ? chunk.buffer : chunk,
+                ArrayBuffer.isView(chunk) ? chunk.byteOffset : 0,
+                ArrayBuffer.isView(chunk) ? chunk.byteLength : chunk.byteLength
+            );
+            chunks.push(input);
+        },
+        async flush(controller) {
+            const streaming = await getZstdStreaming();
+            const decompressed = streaming.decompressChunks(chunks);
+            if (decompressed) {
+                controller.enqueue(decompressed);
+            }
+        }
+    });
+}
+
 // --- Buffer helpers ---
 
 const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {

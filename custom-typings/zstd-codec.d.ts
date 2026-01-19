@@ -15,6 +15,8 @@ declare module 'zstd-codec' {
 
     class ZstdStreaming {
         compress(contentBytes: Uint8Array, compressionLevel?: number): Uint8Array;
+        compressChunks(chunks: Uint8Array[], sizeHint?: number, compressionLevel?: number): Uint8Array;
         decompress(compressedBytes: Uint8Array, sizeHint?: number): Uint8Array;
+        decompressChunks(chunks: Uint8Array[], sizeHint?: number): Uint8Array;
     }
 }
