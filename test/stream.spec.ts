@@ -21,7 +21,9 @@ import {
     createBase64EncodeStream,
     createBase64DecodeStream,
     encodeBase64,
-    decodeBase64
+    decodeBase64,
+    createDecodeStream,
+    createEncodeStream
 } from '../src/index';
 
 describe("Streaming", () => {
@@ -675,6 +677,134 @@ describe("Streaming", () => {
             } catch (err: any) {
                 expect(err.message).to.include('Invalid base64');
             }
+        });
+    });
+
+    describe("Generic Streaming API", () => {
+        it('should decode with createDecodeStream for single encoding', async () => {
+            const original = 'Hello generic decode stream!';
+            const compressed = zlib.gzipSync(original);
+            const inputStream = createReadableStream(compressed);
+
+            const decodedStream = inputStream.pipeThrough(createDecodeStream('gzip')!);
+            const decoded = await collectStream(decodedStream);
+
+            expect(Buffer.from(decoded).toString()).to.equal(original);
+        });
+
+        it('should encode with createEncodeStream for single encoding', async () => {
+            const original = Buffer.from('Hello generic encode stream!');
+            const inputStream = createReadableStream(original);
+
+            const encodedStream = inputStream.pipeThrough(createEncodeStream('gzip')!);
+            const encoded = await collectStream(encodedStream);
+
+            const decoded = zlib.gunzipSync(Buffer.from(encoded));
+            expect(decoded.toString()).to.equal(original.toString());
+        });
+
+        it('should handle multiple encodings in decode (comma-separated)', async () => {
+            const original = 'Multiple encodings test!';
+            // Encode: first gzip, then base64
+            const gzipped = zlib.gzipSync(original);
+            const encoded = await encodeBase64(gzipped);
+
+            const inputStream = createReadableStream(encoded);
+            // Decode: "gzip, base64" means gzip was applied first, base64 second
+            // So we decode base64 first, then gzip
+            const decodedStream = inputStream.pipeThrough(createDecodeStream('gzip, base64')!);
+            const decoded = await collectStream(decodedStream);
+
+            expect(Buffer.from(decoded).toString()).to.equal(original);
+        });
+
+        it('should handle multiple encodings in decode (array)', async () => {
+            const original = 'Array encodings test!';
+            const gzipped = zlib.gzipSync(original);
+            const encoded = await encodeBase64(gzipped);
+
+            const inputStream = createReadableStream(encoded);
+            const decodedStream = inputStream.pipeThrough(createDecodeStream(['gzip', 'base64'])!);
+            const decoded = await collectStream(decodedStream);
+
+            expect(Buffer.from(decoded).toString()).to.equal(original);
+        });
+
+        it('should handle multiple encodings in encode', async () => {
+            const original = Buffer.from('Encode multiple test!');
+            const inputStream = createReadableStream(original);
+
+            // Encode with gzip then base64
+            const encodedStream = inputStream.pipeThrough(createEncodeStream('gzip, base64')!);
+            const encoded = await collectStream(encodedStream);
+
+            // Decode manually in reverse order
+            const decoded64 = await decodeBase64(encoded);
+            const decoded = zlib.gunzipSync(Buffer.from(decoded64));
+            expect(decoded.toString()).to.equal(original.toString());
+        });
+
+        it('should round-trip with encode and decode streams', async () => {
+            const original = Buffer.from('Round trip with generic streams!');
+            const encoding = 'gzip, base64';
+
+            const inputStream = createReadableStream(original);
+            const encodedStream = inputStream.pipeThrough(createEncodeStream(encoding)!);
+            const decodedStream = encodedStream.pipeThrough(createDecodeStream(encoding)!);
+            const result = await collectStream(decodedStream);
+
+            expect(Buffer.from(result).toString()).to.equal(original.toString());
+        });
+
+        it('should return null for identity/undefined encoding', async () => {
+            // Test undefined
+            expect(createDecodeStream(undefined)).to.equal(null);
+            expect(createEncodeStream(undefined)).to.equal(null);
+
+            // Test 'identity'
+            expect(createDecodeStream('identity')).to.equal(null);
+            expect(createEncodeStream('identity')).to.equal(null);
+
+            // Test empty string equivalent
+            expect(createDecodeStream('')).to.equal(null);
+        });
+
+        it('should throw for unsupported encoding', () => {
+            expect(() => createDecodeStream('unsupported-encoding')).to.throw('Unsupported encoding');
+            expect(() => createEncodeStream('unsupported-encoding')).to.throw('Unsupported encoding');
+        });
+
+        it('should handle case-insensitive encodings', async () => {
+            const original = 'Case insensitive test!';
+            const compressed = zlib.gzipSync(original);
+            const inputStream = createReadableStream(compressed);
+
+            const decodedStream = inputStream.pipeThrough(createDecodeStream('GZIP')!);
+            const decoded = await collectStream(decodedStream);
+
+            expect(Buffer.from(decoded).toString()).to.equal(original);
+        });
+
+        it('should handle brotli encoding', async () => {
+            const original = Buffer.from('Brotli generic test!');
+            const inputStream = createReadableStream(original);
+
+            const encodedStream = inputStream.pipeThrough(createEncodeStream('br')!);
+            const decodedStream = encodedStream.pipeThrough(createDecodeStream('br')!);
+            const result = await collectStream(decodedStream);
+
+            expect(Buffer.from(result).toString()).to.equal(original.toString());
+        });
+
+        it('should handle zstd encoding', async () => {
+            const original = Buffer.from('Zstd generic test!');
+            const inputStream = createReadableStream(original);
+
+            const encodedStream = inputStream.pipeThrough(createEncodeStream('zstd')!);
+            const decodedStream = encodedStream.pipeThrough(createDecodeStream('zstd')!);
+            const result = await collectStream(decodedStream);
+
+            expect(Buffer.from(result).toString()).to.equal(original.toString());
         });
     });
 });

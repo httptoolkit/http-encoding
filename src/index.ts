@@ -730,6 +730,127 @@ export function createBase64DecodeStream(): TransformStream<BufferSource, Uint8A
     });
 }
 
+// --- Generic Streaming API ---
+
+// Chain multiple TransformStreams into one composite stream
+function chainStreams(streams: TransformStream<BufferSource, Uint8Array>[]): TransformStream<BufferSource, Uint8Array> {
+    if (streams.length === 1) {
+        return streams[0];
+    }
+
+    // Connect streams: readable of each flows into writable of next
+    const first = streams[0];
+    const last = streams[streams.length - 1];
+
+    for (let i = 0; i < streams.length - 1; i++) {
+        streams[i].readable.pipeTo(streams[i + 1].writable);
+    }
+
+    return { writable: first.writable, readable: last.readable } as TransformStream<BufferSource, Uint8Array>;
+}
+
+// Get decoder stream for a single encoding (identity already filtered out)
+function getDecoderStream(encoding: string): TransformStream<BufferSource, Uint8Array> {
+    switch (encoding.toLowerCase()) {
+        case 'gzip':
+        case 'x-gzip':
+            return createGunzipStream();
+        case 'deflate':
+        case 'x-deflate':
+            return createInflateStream();
+        case 'br':
+            return createBrotliDecompressStream();
+        case 'zstd':
+            return createZstdDecompressStream();
+        case 'base64':
+            return createBase64DecodeStream();
+        default:
+            throw new Error(`Unsupported encoding: ${encoding}`);
+    }
+}
+
+// Get encoder stream for a single encoding (identity already filtered out)
+function getEncoderStream(encoding: string): TransformStream<BufferSource, Uint8Array> {
+    switch (encoding.toLowerCase()) {
+        case 'gzip':
+        case 'x-gzip':
+            return createGzipStream();
+        case 'deflate':
+        case 'x-deflate':
+            return createDeflateStream();
+        case 'br':
+            return createBrotliCompressStream();
+        case 'zstd':
+            return createZstdCompressStream();
+        case 'base64':
+            return createBase64EncodeStream();
+        default:
+            throw new Error(`Unsupported encoding: ${encoding}`);
+    }
+}
+
+// Parse encoding header into array of non-identity encodings
+function parseEncodings(encoding: string | string[] | undefined): string[] {
+    if (!encoding) return [];
+
+    const encodings = Array.isArray(encoding)
+        ? encoding
+        : encoding.includes(', ')
+            ? encoding.split(', ')
+            : [encoding];
+
+    return encodings.filter(e => !IDENTITY_ENCODINGS.includes(e.toLowerCase()));
+}
+
+/**
+ * Creates a decode stream for the given content-encoding header value.
+ * Supports multiple encodings (comma-separated or array), applied in reverse order.
+ * Returns null if no decoding is needed (identity or no encoding).
+ *
+ * @example
+ * const decoder = createDecodeStream('gzip');
+ * const output = decoder ? stream.pipeThrough(decoder) : stream;
+ *
+ * @example
+ * // Multiple encodings (decodes in reverse order)
+ * const decoder = createDecodeStream('gzip, br');
+ */
+export function createDecodeStream(encoding: string | string[] | undefined): TransformStream<BufferSource, Uint8Array> | null {
+    const encodings = parseEncodings(encoding);
+    if (encodings.length === 0) return null;
+
+    // Reverse order for decoding (last applied encoding = first to decode)
+    encodings.reverse();
+
+    if (encodings.length === 1) {
+        return getDecoderStream(encodings[0]);
+    }
+    return chainStreams(encodings.map(e => getDecoderStream(e)));
+}
+
+/**
+ * Creates an encode stream for the given content-encoding header value.
+ * Supports multiple encodings (comma-separated or array), applied in order.
+ * Returns null if no encoding is needed (identity or no encoding).
+ *
+ * @example
+ * const encoder = createEncodeStream('gzip');
+ * const output = encoder ? stream.pipeThrough(encoder) : stream;
+ *
+ * @example
+ * // Multiple encodings (applies gzip first, then base64)
+ * const encoder = createEncodeStream('gzip, base64');
+ */
+export function createEncodeStream(encoding: string | string[] | undefined): TransformStream<BufferSource, Uint8Array> | null {
+    const encodings = parseEncodings(encoding);
+    if (encodings.length === 0) return null;
+
+    if (encodings.length === 1) {
+        return getEncoderStream(encodings[0]);
+    }
+    return chainStreams(encodings.map(e => getEncoderStream(e)));
+}
+
 // --- Buffer helpers ---
 
 const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {

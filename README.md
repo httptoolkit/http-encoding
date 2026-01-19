@@ -63,6 +63,20 @@ Each method accepts a buffer and returns a promise for a buffer.
 
 This library also supports streaming encoding and decoding, returning web-standard `TransformStream` instances. This uses native `CompressionStream`/`DecompressionStream` where available (all modern browsers and Node 18+).
 
+### `createDecodeStream(encoding)`
+
+Takes an encoding (in the format of a standard HTTP [content-encoding header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding)) and returns a `TransformStream` that decodes data with the specified encoding(s), or `null` if no transformation is needed (identity encoding or undefined).
+
+The encoding can be a string (e.g. `'gzip'` or `'gzip, base64'`), an array of strings, or undefined.
+
+### `createEncodeStream(encoding)`
+
+Takes an encoding (a valid HTTP [content-encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding) name) and returns a `TransformStream` that encodes data with the specified encoding(s), or `null` if no transformation is needed (identity encoding or undefined).
+
+The encoding can be a string (e.g. `'gzip'` or `'gzip, base64'`), an array of strings, or undefined.
+
+### Per-codec streaming methods
+
 * `createGzipStream`
 * `createGunzipStream`
 * `createDeflateStream`
@@ -73,6 +87,8 @@ This library also supports streaming encoding and decoding, returning web-standa
 * `createBrotliDecompressStream`
 * `createZstdCompressStream`
 * `createZstdDecompressStream`
+* `createBase64EncodeStream`
+* `createBase64DecodeStream`
 
 ## Browser usage
 
