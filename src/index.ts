@@ -146,6 +146,50 @@ export function createGunzipStream(): TransformStream<BufferSource, Uint8Array> 
     return getDuplex().toWeb(zlib.createGunzip()) as TransformStream<BufferSource, Uint8Array>;
 }
 
+export function createDeflateStream(): TransformStream<BufferSource, Uint8Array> {
+    // Use native CompressionStream where available:
+    if (typeof CompressionStream !== 'undefined') {
+        return new CompressionStream('deflate');
+    }
+    // Turn zlib node built-in into a web stream if not:
+    return getDuplex().toWeb(zlib.createDeflate()) as TransformStream<BufferSource, Uint8Array>;
+}
+
+export function createInflateStream(): TransformStream<BufferSource, Uint8Array> {
+    // Use native DecompressionStream where available:
+    if (typeof DecompressionStream !== 'undefined') {
+        return new DecompressionStream('deflate');
+    }
+    // Turn zlib node built-in into a web stream if not:
+    return getDuplex().toWeb(zlib.createInflate()) as TransformStream<BufferSource, Uint8Array>;
+}
+
+export function createDeflateRawStream(): TransformStream<BufferSource, Uint8Array> {
+    // Use native CompressionStream where available:
+    if (typeof CompressionStream !== 'undefined') {
+        try {
+            return new CompressionStream('deflate-raw');
+        } catch {
+            // deflate-raw not supported (e.g. Node 18)
+        }
+    }
+    // Turn zlib node built-in into a web stream if not:
+    return getDuplex().toWeb(zlib.createDeflateRaw()) as TransformStream<BufferSource, Uint8Array>;
+}
+
+export function createInflateRawStream(): TransformStream<BufferSource, Uint8Array> {
+    // Use native DecompressionStream where available:
+    if (typeof DecompressionStream !== 'undefined') {
+        try {
+            return new DecompressionStream('deflate-raw');
+        } catch {
+            // deflate-raw not supported (e.g. Node 18)
+        }
+    }
+    // Turn zlib node built-in into a web stream if not:
+    return getDuplex().toWeb(zlib.createInflateRaw()) as TransformStream<BufferSource, Uint8Array>;
+}
+
 // --- Buffer helpers ---
 
 const asBuffer = (input: Buffer | Uint8Array | ArrayBuffer): Buffer => {

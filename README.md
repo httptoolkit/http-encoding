@@ -61,10 +61,14 @@ Each method accepts a buffer and returns a promise for a buffer.
 
 ## Streaming methods
 
-This library also supports streaming decoding, using web de(compression) streams wherever possible.
+This library also supports streaming encoding and decoding, returning web-standard `TransformStream` instances. This uses native `CompressionStream`/`DecompressionStream` where available (all modern browsers and Node 18+).
 
 * `createGzipStream`
 * `createGunzipStream`
+* `createDeflateStream`
+* `createInflateStream`
+* `createDeflateRawStream`
+* `createInflateRawStream`
 
 ## Browser usage
 

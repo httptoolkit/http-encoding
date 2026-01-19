@@ -5,7 +5,11 @@ const expect = chai.expect;
 
 import {
     createGzipStream,
-    createGunzipStream
+    createGunzipStream,
+    createDeflateStream,
+    createInflateStream,
+    createDeflateRawStream,
+    createInflateRawStream
 } from '../src/index';
 
 // Helper to collect all chunks from a ReadableStream into a single Uint8Array
@@ -119,6 +123,78 @@ describe("Streaming", () => {
             // Verify decompression
             const decompressed = zlib.gunzipSync(Buffer.from(compressed));
             expect(decompressed.toString()).to.equal(repeated);
+        });
+    });
+
+    describe("Deflate", () => {
+        it('should compress data with deflate stream', async () => {
+            const input = Buffer.from('Hello streaming deflate world!');
+            const inputStream = createReadableStream(input);
+
+            const compressedStream = inputStream.pipeThrough(createDeflateStream());
+            const compressed = await collectStream(compressedStream);
+
+            // Verify the compressed data can be decompressed with zlib
+            const decompressed = zlib.inflateSync(Buffer.from(compressed));
+            expect(decompressed.toString()).to.equal('Hello streaming deflate world!');
+        });
+
+        it('should decompress deflate data with stream', async () => {
+            const original = 'Hello streaming inflate world!';
+            const compressed = zlib.deflateSync(original);
+            const inputStream = createReadableStream(compressed);
+
+            const decompressedStream = inputStream.pipeThrough(createInflateStream());
+            const decompressed = await collectStream(decompressedStream);
+
+            expect(Buffer.from(decompressed).toString()).to.equal(original);
+        });
+
+        it('should handle round-trip compression and decompression', async () => {
+            const original = 'Round-trip deflate streaming test with some repeated data data data data';
+            const inputStream = createReadableStream(Buffer.from(original));
+
+            const compressedStream = inputStream.pipeThrough(createDeflateStream());
+            const decompressedStream = compressedStream.pipeThrough(createInflateStream());
+            const result = await collectStream(decompressedStream);
+
+            expect(Buffer.from(result).toString()).to.equal(original);
+        });
+    });
+
+    describe("Deflate-Raw", () => {
+        it('should compress data with deflate-raw stream', async () => {
+            const input = Buffer.from('Hello streaming deflate-raw world!');
+            const inputStream = createReadableStream(input);
+
+            const compressedStream = inputStream.pipeThrough(createDeflateRawStream());
+            const compressed = await collectStream(compressedStream);
+
+            // Verify the compressed data can be decompressed with zlib
+            const decompressed = zlib.inflateRawSync(Buffer.from(compressed));
+            expect(decompressed.toString()).to.equal('Hello streaming deflate-raw world!');
+        });
+
+        it('should decompress deflate-raw data with stream', async () => {
+            const original = 'Hello streaming inflate-raw world!';
+            const compressed = zlib.deflateRawSync(original);
+            const inputStream = createReadableStream(compressed);
+
+            const decompressedStream = inputStream.pipeThrough(createInflateRawStream());
+            const decompressed = await collectStream(decompressedStream);
+
+            expect(Buffer.from(decompressed).toString()).to.equal(original);
+        });
+
+        it('should handle round-trip compression and decompression', async () => {
+            const original = 'Round-trip deflate-raw streaming test with some repeated data data data data';
+            const inputStream = createReadableStream(Buffer.from(original));
+
+            const compressedStream = inputStream.pipeThrough(createDeflateRawStream());
+            const decompressedStream = compressedStream.pipeThrough(createInflateRawStream());
+            const result = await collectStream(decompressedStream);
+
+            expect(Buffer.from(result).toString()).to.equal(original);
         });
     });
 });
