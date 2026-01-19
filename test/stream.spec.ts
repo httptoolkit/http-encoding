@@ -20,38 +20,6 @@ import {
     zstdDecompress
 } from '../src/index';
 
-// Helper to collect all chunks from a ReadableStream into a single Uint8Array
-async function collectStream(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    let totalLength = 0;
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        totalLength += value.length;
-    }
-
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.length;
-    }
-    return result;
-}
-
-// Helper to create a ReadableStream from a Uint8Array
-function createReadableStream(data: Uint8Array): ReadableStream<Uint8Array> {
-    return new ReadableStream({
-        start(controller) {
-            controller.enqueue(data);
-            controller.close();
-        }
-    });
-}
-
 describe("Streaming", () => {
     describe("Gzip", () => {
         it('should compress data with gzip stream', async () => {
@@ -132,6 +100,39 @@ describe("Streaming", () => {
             const decompressed = zlib.gunzipSync(Buffer.from(compressed));
             expect(decompressed.toString()).to.equal(repeated);
         });
+
+        it('should produce incremental output during compression', async () => {
+            const inputChunks = generateLargeData(STREAMING_TEST_SIZE_KB);
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createGzipStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+
+            const decompressed = zlib.gunzipSync(Buffer.from(totalOutput));
+            const expectedSize = inputChunks.reduce((sum, c) => sum + c.length, 0);
+            expect(decompressed.length).to.equal(expectedSize);
+        });
+
+        it('should produce incremental output during decompression', async () => {
+            const originalData = Buffer.concat(generateLargeData(STREAMING_TEST_SIZE_KB));
+            const compressed = zlib.gzipSync(originalData);
+
+            const chunkSize = 16 * 1024;
+            const inputChunks: Uint8Array[] = [];
+            for (let i = 0; i < compressed.length; i += chunkSize) {
+                inputChunks.push(compressed.subarray(i, Math.min(i + chunkSize, compressed.length)));
+            }
+
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createGunzipStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+            expect(totalOutput.length).to.equal(originalData.length);
+        });
     });
 
     describe("Deflate", () => {
@@ -167,6 +168,39 @@ describe("Streaming", () => {
             const result = await collectStream(decompressedStream);
 
             expect(Buffer.from(result).toString()).to.equal(original);
+        });
+
+        it('should produce incremental output during compression', async () => {
+            const inputChunks = generateLargeData(STREAMING_TEST_SIZE_KB);
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createDeflateStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+
+            const decompressed = zlib.inflateSync(Buffer.from(totalOutput));
+            const expectedSize = inputChunks.reduce((sum, c) => sum + c.length, 0);
+            expect(decompressed.length).to.equal(expectedSize);
+        });
+
+        it('should produce incremental output during decompression', async () => {
+            const originalData = Buffer.concat(generateLargeData(STREAMING_TEST_SIZE_KB));
+            const compressed = zlib.deflateSync(originalData);
+
+            const chunkSize = 16 * 1024;
+            const inputChunks: Uint8Array[] = [];
+            for (let i = 0; i < compressed.length; i += chunkSize) {
+                inputChunks.push(compressed.subarray(i, Math.min(i + chunkSize, compressed.length)));
+            }
+
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createInflateStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+            expect(totalOutput.length).to.equal(originalData.length);
         });
     });
 
@@ -256,6 +290,49 @@ describe("Streaming", () => {
             const decompressed = await brotliDecompress(compressed);
             expect(Buffer.from(decompressed).toString()).to.equal(repeated);
         });
+
+        // Brotli has a larger internal buffer than gzip/deflate, requiring ~1.3MB of
+        // incompressible data before it produces streaming output. With compressible data
+        // the output is too small to trigger streaming. We use 2MB of random data here.
+        it('should produce incremental output during compression', async function () {
+            this.timeout(10000); // Can be slow
+
+            const BROTLI_DATA_SIZE_KB = 2048;
+            const inputChunks = generateLargeData(BROTLI_DATA_SIZE_KB, false);
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createBrotliCompressStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+
+            const decompressed = await brotliDecompress(totalOutput);
+            const expectedSize = inputChunks.reduce((sum, c) => sum + c.length, 0);
+            expect(decompressed.length).to.equal(expectedSize);
+        });
+
+        it('should produce incremental output during decompression', async function () {
+            this.timeout(10000); // Can be slow
+
+            const BROTLI_DECOMPRESS_SIZE_KB = 1024; // 1MB
+            const originalData = Buffer.concat(generateLargeData(BROTLI_DECOMPRESS_SIZE_KB, false));
+            const compressed = await brotliCompress(originalData);
+
+            const chunkSize = 16 * 1024;
+            const inputChunks: Uint8Array[] = [];
+            for (let i = 0; i < compressed.length; i += chunkSize) {
+                inputChunks.push(new Uint8Array(compressed.buffer, compressed.byteOffset + i,
+                    Math.min(chunkSize, compressed.length - i)));
+            }
+
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createBrotliDecompressStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+            expect(totalOutput.length).to.equal(originalData.length);
+        });
     });
 
     describe("Zstd", () => {
@@ -308,5 +385,161 @@ describe("Streaming", () => {
             const decompressed = await zstdDecompress(compressed);
             expect(Buffer.from(decompressed).toString()).to.equal(repeated);
         });
+
+        it('should produce incremental output during compression', async () => {
+            const inputChunks = generateLargeData(STREAMING_TEST_SIZE_KB);
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createZstdCompressStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+
+            const decompressed = await zstdDecompress(totalOutput);
+            const expectedSize = inputChunks.reduce((sum, c) => sum + c.length, 0);
+            expect(decompressed.length).to.equal(expectedSize);
+        });
+
+        it('should produce incremental output during decompression', async () => {
+            const originalData = Buffer.concat(generateLargeData(STREAMING_TEST_SIZE_KB));
+            const compressed = await zstdCompress(originalData);
+
+            const chunkSize = 16 * 1024;
+            const inputChunks: Uint8Array[] = [];
+            for (let i = 0; i < compressed.length; i += chunkSize) {
+                inputChunks.push(new Uint8Array(compressed.buffer, compressed.byteOffset + i,
+                    Math.min(chunkSize, compressed.length - i)));
+            }
+
+            const { outputBeforeEnd, totalOutput } = await testTrueStreaming(
+                createZstdDecompressStream(),
+                inputChunks
+            );
+
+            expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
+            expect(totalOutput.length).to.equal(originalData.length);
+        });
     });
 });
+
+// Helper to collect all chunks from a ReadableStream into a single Uint8Array
+async function collectStream(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalLength = 0;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        totalLength += value.length;
+    }
+
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+    }
+    return result;
+}
+
+// Helper to create a ReadableStream from a Uint8Array
+function createReadableStream(data: Uint8Array): ReadableStream<Uint8Array> {
+    return new ReadableStream({
+        start(controller) {
+            controller.enqueue(data);
+            controller.close();
+        }
+    });
+}
+
+// Data size for incremental output tests (256KB is enough for gzip/deflate/zstd)
+const STREAMING_TEST_SIZE_KB = 256;
+
+// Helper to test true streaming behavior - verifies output arrives before all input is sent
+async function testTrueStreaming(
+    transformStream: TransformStream<Uint8Array, Uint8Array>,
+    inputChunks: Uint8Array[]
+): Promise<{ outputBeforeEnd: boolean; totalOutput: Uint8Array }> {
+    const outputChunks: Uint8Array[] = [];
+    let outputReceivedBeforeEnd = false;
+    let inputComplete = false;
+
+    const writer = transformStream.writable.getWriter();
+    const reader = transformStream.readable.getReader();
+
+    // Start reading in background - this allows output to be collected as it arrives
+    const readPromise = (async () => {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            outputChunks.push(value);
+            if (!inputComplete) {
+                outputReceivedBeforeEnd = true;
+            }
+        }
+    })();
+
+    // Write chunks with small delays to allow output processing
+    for (const chunk of inputChunks) {
+        await writer.write(chunk);
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    inputComplete = true;
+    await writer.close();
+    await readPromise;
+
+    // Combine output chunks
+    const totalLength = outputChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const totalOutput = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of outputChunks) {
+        totalOutput.set(chunk, offset);
+        offset += chunk.length;
+    }
+
+    return { outputBeforeEnd: outputReceivedBeforeEnd, totalOutput };
+}
+
+// Mulberry32: high-quality 32-bit seeded PRNG that produces incompressible output
+function createSeededRng(seed: number) {
+    return function(): number {
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+
+// Generate large test data that will produce streaming output
+function generateLargeData(sizeKB: number, compressible = true): Uint8Array[] {
+    const chunkSize = 16 * 1024; // 16KB chunks
+    const totalSize = sizeKB * 1024;
+    const chunks: Uint8Array[] = [];
+    const pattern = 'This is test data that will be repeated to create compressible content. ';
+
+    // Fixed seed for deterministic, reproducible test data
+    const rng = createSeededRng(0x12345678);
+
+    let remaining = totalSize;
+    while (remaining > 0) {
+        const size = Math.min(chunkSize, remaining);
+        const chunk = new Uint8Array(size);
+        if (compressible) {
+            for (let i = 0; i < size; i++) {
+                chunk[i] = pattern.charCodeAt(i % pattern.length);
+            }
+        } else {
+            // Use seeded PRNG for deterministic incompressible data
+            for (let i = 0; i < size; i++) {
+                chunk[i] = Math.floor(rng() * 256);
+            }
+        }
+        chunks.push(chunk);
+        remaining -= size;
+    }
+
+    return chunks;
+}
