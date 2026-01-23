@@ -4,7 +4,7 @@
 
 **Everything you need to handle HTTP message body content-encoding**
 
-This package includes methods to decode & encode all commonly used HTTP content encodings, in a consistent format, usable in a wide range of Node.js versions and browsers.
+This package includes methods to decode & encode all commonly used HTTP content encodings, in a consistent format, usable in a wide range of Node.js versions and browsers. Both buffer & streaming APIs are available.
 
 The supported codecs are:
 
@@ -18,9 +18,9 @@ All encoding names are case-insensitive (although lowercase is generally standar
 
 Found a codec used in real-world HTTP that isn't supported? Open an issue!
 
-## API
+## Buffer API
 
-The library includes two general methods:
+The library includes two general methods for de/encoding buffers:
 
 ### `decodeBuffer(body, encoding)`
 
@@ -59,7 +59,7 @@ This library also exports consistent async methods to compress and decompress ea
 
 Each method accepts a buffer and returns a promise for a buffer.
 
-## Streaming methods
+## Streaming API
 
 This library also supports streaming encoding and decoding, returning web-standard `TransformStream` instances. This uses native `CompressionStream`/`DecompressionStream` where available (all modern browsers and Node 18+).
 
@@ -76,6 +76,8 @@ Takes an encoding (a valid HTTP [content-encoding](https://developer.mozilla.org
 The encoding can be a string (e.g. `'gzip'` or `'gzip, base64'`), an array of strings, or undefined.
 
 ### Per-codec streaming methods
+
+Each codec can also be stream-decoded explicitly with the corresponding method:
 
 * `createGzipStream`
 * `createGunzipStream`
