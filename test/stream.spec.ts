@@ -1,9 +1,11 @@
-import * as zlib from 'zlib';
-
 import chai = require("chai");
 const expect = chai.expect;
 
 import {
+    gzip,
+    gunzip,
+    deflate,
+    inflate,
     createGzipStream,
     createGunzipStream,
     createDeflateStream,
@@ -35,14 +37,14 @@ describe("Streaming", () => {
             const compressedStream = inputStream.pipeThrough(createGzipStream());
             const compressed = await collectStream(compressedStream);
 
-            // Verify the compressed data can be decompressed with zlib
-            const decompressed = zlib.gunzipSync(Buffer.from(compressed));
-            expect(decompressed.toString()).to.equal('Hello streaming gzip world!');
+            // Verify the compressed data can be decompressed
+            const decompressed = await gunzip(compressed);
+            expect(Buffer.from(decompressed).toString()).to.equal('Hello streaming gzip world!');
         });
 
         it('should decompress gzip data with stream', async () => {
             const original = 'Hello streaming gunzip world!';
-            const compressed = zlib.gzipSync(original);
+            const compressed = await gzip(Buffer.from(original));
             const inputStream = createReadableStream(compressed);
 
             const decompressedStream = inputStream.pipeThrough(createGunzipStream());
@@ -103,8 +105,8 @@ describe("Streaming", () => {
             expect(compressed.length).to.be.lessThan(repeated.length);
 
             // Verify decompression
-            const decompressed = zlib.gunzipSync(Buffer.from(compressed));
-            expect(decompressed.toString()).to.equal(repeated);
+            const decompressed = await gunzip(compressed);
+            expect(Buffer.from(decompressed).toString()).to.equal(repeated);
         });
 
         it('should produce incremental output during compression', async () => {
@@ -116,14 +118,14 @@ describe("Streaming", () => {
 
             expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
 
-            const decompressed = zlib.gunzipSync(Buffer.from(totalOutput));
+            const decompressed = await gunzip(totalOutput);
             const expectedSize = inputChunks.reduce((sum, c) => sum + c.length, 0);
             expect(decompressed.length).to.equal(expectedSize);
         });
 
         it('should produce incremental output during decompression', async () => {
-            const originalData = Buffer.concat(generateLargeData(STREAMING_TEST_SIZE_KB));
-            const compressed = zlib.gzipSync(originalData);
+            const originalData = concatUint8Arrays(generateLargeData(STREAMING_TEST_SIZE_KB));
+            const compressed = await gzip(originalData);
 
             const chunkSize = 16 * 1024;
             const inputChunks: Uint8Array[] = [];
@@ -149,14 +151,14 @@ describe("Streaming", () => {
             const compressedStream = inputStream.pipeThrough(createDeflateStream());
             const compressed = await collectStream(compressedStream);
 
-            // Verify the compressed data can be decompressed with zlib
-            const decompressed = zlib.inflateSync(Buffer.from(compressed));
-            expect(decompressed.toString()).to.equal('Hello streaming deflate world!');
+            // Verify the compressed data can be decompressed
+            const decompressed = await inflate(compressed);
+            expect(Buffer.from(decompressed).toString()).to.equal('Hello streaming deflate world!');
         });
 
         it('should decompress deflate data with stream', async () => {
             const original = 'Hello streaming inflate world!';
-            const compressed = zlib.deflateSync(original);
+            const compressed = await deflate(Buffer.from(original));
             const inputStream = createReadableStream(compressed);
 
             const decompressedStream = inputStream.pipeThrough(createInflateStream());
@@ -185,14 +187,14 @@ describe("Streaming", () => {
 
             expect(outputBeforeEnd).to.equal(true, 'Expected output before input completed');
 
-            const decompressed = zlib.inflateSync(Buffer.from(totalOutput));
+            const decompressed = await inflate(totalOutput);
             const expectedSize = inputChunks.reduce((sum, c) => sum + c.length, 0);
             expect(decompressed.length).to.equal(expectedSize);
         });
 
         it('should produce incremental output during decompression', async () => {
-            const originalData = Buffer.concat(generateLargeData(STREAMING_TEST_SIZE_KB));
-            const compressed = zlib.deflateSync(originalData);
+            const originalData = concatUint8Arrays(generateLargeData(STREAMING_TEST_SIZE_KB));
+            const compressed = await deflate(originalData);
 
             const chunkSize = 16 * 1024;
             const inputChunks: Uint8Array[] = [];
@@ -218,14 +220,17 @@ describe("Streaming", () => {
             const compressedStream = inputStream.pipeThrough(createDeflateRawStream());
             const compressed = await collectStream(compressedStream);
 
-            // Verify the compressed data can be decompressed with zlib
-            const decompressed = zlib.inflateRawSync(Buffer.from(compressed));
-            expect(decompressed.toString()).to.equal('Hello streaming deflate-raw world!');
+            // Verify round-trip via stream
+            const decompressedStream = createReadableStream(compressed).pipeThrough(createInflateRawStream());
+            const decompressed = await collectStream(decompressedStream);
+            expect(Buffer.from(decompressed).toString()).to.equal('Hello streaming deflate-raw world!');
         });
 
         it('should decompress deflate-raw data with stream', async () => {
             const original = 'Hello streaming inflate-raw world!';
-            const compressed = zlib.deflateRawSync(original);
+            // Compress via stream to create fixture
+            const compressedStream = createReadableStream(Buffer.from(original)).pipeThrough(createDeflateRawStream());
+            const compressed = await collectStream(compressedStream);
             const inputStream = createReadableStream(compressed);
 
             const decompressedStream = inputStream.pipeThrough(createInflateRawStream());
@@ -321,7 +326,7 @@ describe("Streaming", () => {
             this.timeout(10000); // Can be slow
 
             const BROTLI_DECOMPRESS_SIZE_KB = 1024; // 1MB
-            const originalData = Buffer.concat(generateLargeData(BROTLI_DECOMPRESS_SIZE_KB));
+            const originalData = concatUint8Arrays(generateLargeData(BROTLI_DECOMPRESS_SIZE_KB));
             const compressed = await brotliCompress(originalData);
 
             const chunkSize = 16 * 1024;
@@ -407,7 +412,7 @@ describe("Streaming", () => {
         });
 
         it('should produce incremental output during decompression', async () => {
-            const originalData = Buffer.concat(generateLargeData(STREAMING_TEST_SIZE_KB));
+            const originalData = concatUint8Arrays(generateLargeData(STREAMING_TEST_SIZE_KB));
             const compressed = await zstdCompress(originalData);
 
             const chunkSize = 16 * 1024;
@@ -646,7 +651,7 @@ describe("Streaming", () => {
             this.timeout(10000);
 
             // Generate random data, encode to base64, then decode via stream
-            const originalData = Buffer.concat(generateLargeData(4096));
+            const originalData = concatUint8Arrays(generateLargeData(4096));
             const encoded = await encodeBase64(originalData);
 
             const chunkSize = 64 * 1024;
@@ -683,7 +688,7 @@ describe("Streaming", () => {
     describe("Generic Streaming API", () => {
         it('should decode with createDecodeStream for single encoding', async () => {
             const original = 'Hello generic decode stream!';
-            const compressed = zlib.gzipSync(original);
+            const compressed = await gzip(Buffer.from(original));
             const inputStream = createReadableStream(compressed);
 
             const decodedStream = inputStream.pipeThrough(createDecodeStream('gzip')!);
@@ -699,14 +704,14 @@ describe("Streaming", () => {
             const encodedStream = inputStream.pipeThrough(createEncodeStream('gzip')!);
             const encoded = await collectStream(encodedStream);
 
-            const decoded = zlib.gunzipSync(Buffer.from(encoded));
-            expect(decoded.toString()).to.equal(original.toString());
+            const decoded = await gunzip(encoded);
+            expect(Buffer.from(decoded).toString()).to.equal(original.toString());
         });
 
         it('should handle multiple encodings in decode (comma-separated)', async () => {
             const original = 'Multiple encodings test!';
             // Encode: first gzip, then base64
-            const gzipped = zlib.gzipSync(original);
+            const gzipped = await gzip(Buffer.from(original));
             const encoded = await encodeBase64(gzipped);
 
             const inputStream = createReadableStream(encoded);
@@ -720,7 +725,7 @@ describe("Streaming", () => {
 
         it('should handle multiple encodings in decode (array)', async () => {
             const original = 'Array encodings test!';
-            const gzipped = zlib.gzipSync(original);
+            const gzipped = await gzip(Buffer.from(original));
             const encoded = await encodeBase64(gzipped);
 
             const inputStream = createReadableStream(encoded);
@@ -740,8 +745,8 @@ describe("Streaming", () => {
 
             // Decode manually in reverse order
             const decoded64 = await decodeBase64(encoded);
-            const decoded = zlib.gunzipSync(Buffer.from(decoded64));
-            expect(decoded.toString()).to.equal(original.toString());
+            const decoded = await gunzip(Buffer.from(decoded64));
+            expect(Buffer.from(decoded).toString()).to.equal(original.toString());
         });
 
         it('should round-trip with encode and decode streams', async () => {
@@ -776,7 +781,7 @@ describe("Streaming", () => {
 
         it('should handle case-insensitive encodings', async () => {
             const original = 'Case insensitive test!';
-            const compressed = zlib.gzipSync(original);
+            const compressed = await gzip(Buffer.from(original));
             const inputStream = createReadableStream(compressed);
 
             const decodedStream = inputStream.pipeThrough(createDecodeStream('GZIP')!);
@@ -839,6 +844,18 @@ function createReadableStream(data: Uint8Array): ReadableStream<Uint8Array> {
             controller.close();
         }
     });
+}
+
+// Helper to concatenate Uint8Array chunks (replaces Buffer.concat usage)
+function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
+    const totalLength = arrays.reduce((sum, a) => sum + a.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const arr of arrays) {
+        result.set(arr, offset);
+        offset += arr.length;
+    }
+    return result;
 }
 
 // Data size for incremental output tests (256KB is enough for gzip/deflate/zstd)
