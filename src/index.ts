@@ -165,11 +165,9 @@ export async function inflateRaw(buffer: Uint8Array): Promise<Buffer> {
     throw new Error('No inflate-raw implementation available');
 }
 
-// Use Node's new built-in Brotli compression, if available, or
-// use the brotli-wasm package if not.
-export const brotliCompress = zlib?.brotliCompress
-    ? (async (buffer: Uint8Array, level?: number): Promise<Uint8Array> => {
-        // In node, we just have to convert between the options formats and promisify:
+export async function brotliCompress(buffer: Uint8Array, level?: number): Promise<Uint8Array> {
+    // Node: use native zlib brotli (fastest, supports level)
+    if (isNativeNode && zlib?.brotliCompress) {
         return new Promise((resolve, reject) => {
             zlib!.brotliCompress(buffer, level !== undefined
                 ? { params: { [zlib!.constants.BROTLI_PARAM_QUALITY]: level } }
@@ -179,18 +177,41 @@ export const brotliCompress = zlib?.brotliCompress
                 else resolve(result);
             });
         });
-    })
-    : (async (buffer: Uint8Array, level?: number): Promise<Uint8Array> => {
-        const { compress } = await import('brotli-wasm'); // Sync in node, async in browsers
-        return compress(buffer, { quality: level });
-    });
+    }
 
-export const brotliDecompress = zlib?.brotliDecompress
-    ? promisifyFn<Buffer>(zlib.brotliDecompress)
-    : (async (buffer: Uint8Array): Promise<Uint8Array> => {
-        const { decompress } = await import('brotli-wasm'); // Sync in node, async in browsers
-        return decompress(buffer);
-    });
+    // Try native CompressionStream('br') — supported in modern browsers
+    if (typeof CompressionStream !== 'undefined') {
+        try {
+            return await compressViaStream(buffer, 'br' as CompressionFormat);
+        } catch {
+            // 'br' not supported in this CompressionStream
+        }
+    }
+
+    // Fallback: brotli-wasm
+    const { compress } = await import('brotli-wasm');
+    return compress(buffer, { quality: level });
+}
+
+export async function brotliDecompress(buffer: Uint8Array): Promise<Uint8Array> {
+    // Node: use native zlib brotli (fastest)
+    if (isNativeNode && zlib?.brotliDecompress) {
+        return promisifyFn<Buffer>(zlib.brotliDecompress)(buffer);
+    }
+
+    // Try native DecompressionStream('br') — supported in modern browsers
+    if (typeof DecompressionStream !== 'undefined') {
+        try {
+            return await decompressViaStream(buffer, 'br' as CompressionFormat);
+        } catch {
+            // 'br' not supported in this DecompressionStream
+        }
+    }
+
+    // Fallback: brotli-wasm
+    const { decompress } = await import('brotli-wasm');
+    return decompress(buffer);
+}
 
 // Browser Zstd is a non-built-in wasm implementation that initializes async. We handle this
 // by loading it when the first zstd buffer is decompressed. That lets us defer loading
