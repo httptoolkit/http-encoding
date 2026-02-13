@@ -30,8 +30,6 @@ The input buffer can be any Uint8Array including a Node Buffer (a subclass of Ui
 
 If any encoding is unrecognized or unavailable then this method will throw an exception.
 
-A `decodeBufferSync` method is also available for some use cases, but not recommended, as it's less performant and cannot support some encodings (Brotli or Zstandard).
-
 ### `encodeBuffer(body, encoding, { level })`
 
 Takes a raw body buffer and a single encoding (a valid HTTP [content-encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Encoding) name) and returns a promise for an encoded buffer, using the zero to many buffers specified in the header.

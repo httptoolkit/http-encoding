@@ -1084,53 +1084,6 @@ export async function decodeBuffer(body: Uint8Array | ArrayBuffer, encoding: str
 };
 
 /**
- * Decodes a buffer, using the encodings as specified in a content-encoding header, synchronously.
- * Returns a Buffer instance in Node, or a Uint8Array in a browser.
- *
- * Zstandard and Brotli decoding are not be supported in synchronous usage.
- *
- * Throws if any unrecognized/unavailable content-encoding is found.
- *
- * @deprecated This is here for convenience with some existing APIs, but for performance & consistency
- * async usage with decodeBuffer is preferable.
- */
- export function decodeBufferSync(body: Uint8Array | ArrayBuffer, encoding: string | string[] | undefined): Buffer {
-    if (!zlib) throw new Error('Synchronous decoding requires the zlib module');
-
-    const bodyBuffer = asBuffer(body);
-
-    if (Array.isArray(encoding) || (typeof encoding === 'string' && encoding.indexOf(', ') >= 0)) {
-        const encodings = typeof encoding === 'string' ? encoding.split(', ').reverse() : encoding;
-        return encodings.reduce((content, nextEncoding) => {
-            return decodeBufferSync(content, nextEncoding);
-        }, bodyBuffer) as Buffer;
-    }
-
-    if (!encoding) encoding = 'identity';
-    else encoding = encoding.toLowerCase();
-
-    if (encoding === 'gzip' || encoding === 'x-gzip') {
-        return zlib.gunzipSync(bodyBuffer);
-    } else if (encoding === 'deflate' || encoding === 'x-deflate') {
-        // Deflate is ambiguous, and may or may not have a zlib wrapper.
-        // This checks the buffer header directly, based on
-        // https://stackoverflow.com/a/37528114/68051
-        const lowNibble = bodyBuffer[0] & 0xF;
-        if (lowNibble === 8) {
-            return zlib.inflateSync(bodyBuffer);
-        } else {
-            return zlib.inflateRawSync(bodyBuffer);
-        }
-    } else if (encoding === 'base64') {
-        return asBuffer(decodeBase64Sync(bodyBuffer));
-    } else if (IDENTITY_ENCODINGS.includes(encoding)) {
-        return asBuffer(bodyBuffer);
-    }
-
-    throw new Error(`Unsupported encoding: ${encoding}`);
-};
-
-/**
  * Encodes a buffer, given a single encoding name (as used in content-encoding headers), and an optional
  * level. Returns a Buffer instance in Node, or a Uint8Array in a browser.
  *

@@ -8,15 +8,11 @@ const expect = chai.expect;
 
 import {
     decodeBuffer,
-    decodeBufferSync,
     gzip,
     deflate,
     deflateRaw,
     encodeBuffer
 } from '../src/index';
-
-let zlib: typeof import('zlib') | undefined;
-try { zlib = require('zlib'); } catch {}
 
 function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
     return buffer.buffer.slice(buffer.byteOffset, buffer.byteLength + buffer.byteOffset)
@@ -114,81 +110,6 @@ describe("Decode", () => {
     it('should decode base64 bodies', async () => {
         const content = Buffer.from(Buffer.from('Base64 response').toString('base64'));
         const body = await decodeBuffer(content, 'base64');
-        expect(body.toString()).to.equal('Base64 response');
-    });
-});
-
-describe("DecodeSync", () => {
-    before(function () {
-        // webpack's zlib: false gives {} rather than undefined, so check for an actual function
-        if (!zlib || typeof zlib.gunzipSync !== 'function') this.skip();
-    });
-
-    it('should return the raw text for unspecified requests', () => {
-        const body = decodeBufferSync(Buffer.from('hello world'), undefined);
-        expect(body.toString()).to.equal('hello world');
-    });
-
-    it('should return the raw text for identity requests', () => {
-        const body = decodeBufferSync(Buffer.from('hello world'), 'identity');
-        expect(body.toString()).to.equal('hello world');
-    });
-
-    it('should throw for unknown encodings', () => {
-        expect((() =>
-            decodeBufferSync(Buffer.from('hello world'), 'randomized')
-        )).to.throw('Unsupported encoding: randomized');
-    });
-
-    it('should decode gzip bodies', () => {
-        const content = zlib!.gzipSync('Gzip response');
-        const body = decodeBufferSync(content, 'gzip');
-        expect(body.toString()).to.equal('Gzip response');
-    });
-
-    it('should decode gzip bodies from ArrayBuffer', () => {
-        const content = bufferToArrayBuffer(zlib!.gzipSync('Gzip response'));
-        const body = decodeBufferSync(content, 'gzip');
-        expect(body.toString()).to.equal('Gzip response');
-    });
-
-    it('should decode gzip bodies from Uint8Array', () => {
-        const content = bufferToTypedArray(zlib!.gzipSync('Gzip response'));
-        const body = decodeBufferSync(content, 'gzip');
-        expect(body.toString()).to.equal('Gzip response');
-    });
-
-    it('should decode zlib deflate bodies', () => {
-        const content = zlib!.deflateSync('Deflate response');
-        const body = decodeBufferSync(content, 'deflate');
-        expect(body.toString()).to.equal('Deflate response');
-    });
-
-    it('should decode raw deflate bodies', () => {
-        const content = zlib!.deflateRawSync('Raw deflate response');
-        const body = decodeBufferSync(content, 'deflate');
-        expect(body.toString()).to.equal('Raw deflate response');
-    });
-
-    it('should decode bodies with multiple encodings', async () => {
-        const content = zlib!.gzipSync(
-            zlib!.deflateSync(
-                Buffer.from('First deflate, then gzip, now this', 'utf8')
-            )
-        );
-        const body = decodeBufferSync(content, 'deflate, identity, gzip, identity');
-        expect(body.toString()).to.equal('First deflate, then gzip, now this');
-    });
-
-    it('should decode bodies ignoring the code of the encoding', () => {
-        const content = zlib!.gzipSync('Gzip response');
-        const body = decodeBufferSync(content, 'GZIP');
-        expect(body.toString()).to.equal('Gzip response');
-    });
-
-    it('should decode base64 bodies', () => {
-        const content = Buffer.from(Buffer.from('Base64 response').toString('base64'));
-        const body = decodeBufferSync(content, 'base64');
         expect(body.toString()).to.equal('Base64 response');
     });
 });
