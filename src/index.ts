@@ -1,5 +1,4 @@
 import type { ZstdStreaming } from 'zstd-codec';
-import type { promisify as utilPromisify } from 'util';
 
 let zlib: typeof import('zlib') | undefined;
 try { zlib = require('zlib'); } catch {}
@@ -11,11 +10,15 @@ const isNativeNode = typeof process !== 'undefined'
     && typeof process.versions !== 'undefined'
     && typeof process.versions.node !== 'undefined';
 
-let _promisify: typeof utilPromisify | undefined;
-const getPromisify = (): typeof utilPromisify => {
-    if (!_promisify) _promisify = require('pify');
-    return _promisify!;
-};
+// Minimal promisify for zlib-style (err, result) callbacks.
+function promisifyFn<T>(fn: Function): (...args: any[]) => Promise<T> {
+    return (...args: any[]) => new Promise<T>((resolve, reject) => {
+        fn(...args, (err: Error | null, result: T) => {
+            if (err) reject(err);
+            else resolve(result);
+        });
+    });
+}
 
 export type SUPPORTED_ENCODING =
     | 'identity'
@@ -101,43 +104,43 @@ async function decompressViaStream(data: Uint8Array, format: CompressionFormat):
 // --- Per-codec buffer functions ---
 
 export async function gzip(buffer: Uint8Array, options?: { level?: number }): Promise<Buffer> {
-    if (isNativeNode && zlib) return getPromisify()(zlib.gzip)(buffer, options);
+    if (isNativeNode && zlib) return promisifyFn<Buffer>(zlib.gzip)(buffer, options);
     if (typeof CompressionStream !== 'undefined') {
         return asBuffer(await compressViaStream(buffer, 'gzip'));
     }
-    if (zlib) return getPromisify()(zlib.gzip)(buffer, options);
+    if (zlib) return promisifyFn<Buffer>(zlib.gzip)(buffer, options);
     throw new Error('No gzip implementation available');
 }
 
 export async function gunzip(buffer: Uint8Array): Promise<Buffer> {
-    if (isNativeNode && zlib) return getPromisify()(zlib.gunzip)(buffer);
+    if (isNativeNode && zlib) return promisifyFn<Buffer>(zlib.gunzip)(buffer);
     if (typeof DecompressionStream !== 'undefined') {
         return asBuffer(await decompressViaStream(buffer, 'gzip'));
     }
-    if (zlib) return getPromisify()(zlib.gunzip)(buffer);
+    if (zlib) return promisifyFn<Buffer>(zlib.gunzip)(buffer);
     throw new Error('No gunzip implementation available');
 }
 
 export async function deflate(buffer: Uint8Array, options?: { level?: number }): Promise<Buffer> {
-    if (isNativeNode && zlib) return getPromisify()(zlib.deflate)(buffer, options);
+    if (isNativeNode && zlib) return promisifyFn<Buffer>(zlib.deflate)(buffer, options);
     if (typeof CompressionStream !== 'undefined') {
         return asBuffer(await compressViaStream(buffer, 'deflate'));
     }
-    if (zlib) return getPromisify()(zlib.deflate)(buffer, options);
+    if (zlib) return promisifyFn<Buffer>(zlib.deflate)(buffer, options);
     throw new Error('No deflate implementation available');
 }
 
 export async function inflate(buffer: Uint8Array): Promise<Buffer> {
-    if (isNativeNode && zlib) return getPromisify()(zlib.inflate)(buffer);
+    if (isNativeNode && zlib) return promisifyFn<Buffer>(zlib.inflate)(buffer);
     if (typeof DecompressionStream !== 'undefined') {
         return asBuffer(await decompressViaStream(buffer, 'deflate'));
     }
-    if (zlib) return getPromisify()(zlib.inflate)(buffer);
+    if (zlib) return promisifyFn<Buffer>(zlib.inflate)(buffer);
     throw new Error('No inflate implementation available');
 }
 
 export async function deflateRaw(buffer: Uint8Array, options?: { level?: number }): Promise<Buffer> {
-    if (isNativeNode && zlib) return getPromisify()(zlib.deflateRaw)(buffer, options);
+    if (isNativeNode && zlib) return promisifyFn<Buffer>(zlib.deflateRaw)(buffer, options);
     if (typeof CompressionStream !== 'undefined') {
         try {
             return asBuffer(await compressViaStream(buffer, 'deflate-raw' as CompressionFormat));
@@ -145,12 +148,12 @@ export async function deflateRaw(buffer: Uint8Array, options?: { level?: number 
             // deflate-raw not supported in this environment
         }
     }
-    if (zlib) return getPromisify()(zlib.deflateRaw)(buffer, options);
+    if (zlib) return promisifyFn<Buffer>(zlib.deflateRaw)(buffer, options);
     throw new Error('No deflate-raw implementation available');
 }
 
 export async function inflateRaw(buffer: Uint8Array): Promise<Buffer> {
-    if (isNativeNode && zlib) return getPromisify()(zlib.inflateRaw)(buffer);
+    if (isNativeNode && zlib) return promisifyFn<Buffer>(zlib.inflateRaw)(buffer);
     if (typeof DecompressionStream !== 'undefined') {
         try {
             return asBuffer(await decompressViaStream(buffer, 'deflate-raw' as CompressionFormat));
@@ -158,7 +161,7 @@ export async function inflateRaw(buffer: Uint8Array): Promise<Buffer> {
             // deflate-raw not supported in this environment
         }
     }
-    if (zlib) return getPromisify()(zlib.inflateRaw)(buffer);
+    if (zlib) return promisifyFn<Buffer>(zlib.inflateRaw)(buffer);
     throw new Error('No inflate-raw implementation available');
 }
 
@@ -183,7 +186,7 @@ export const brotliCompress = zlib?.brotliCompress
     });
 
 export const brotliDecompress = zlib?.brotliDecompress
-    ? getPromisify()(zlib.brotliDecompress)
+    ? promisifyFn<Buffer>(zlib.brotliDecompress)
     : (async (buffer: Uint8Array): Promise<Uint8Array> => {
         const { decompress } = await import('brotli-wasm'); // Sync in node, async in browsers
         return decompress(buffer);
