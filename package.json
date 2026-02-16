@@ -45,7 +45,7 @@
   },
   "homepage": "https://github.com/httptoolkit/http-encoding#readme",
   "engines": {
-    "node": ">=v18.0.0"
+    "node": ">=v22.0.0"
   },
   "dependencies": {
     "brotli-wasm": "^3.0.0",
