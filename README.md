@@ -92,8 +92,8 @@ Each codec can also be stream-decoded explicitly with the corresponding method:
 
 ## Browser usage
 
-To use this in a browser, you'll need to use a bundler (e.g. Webpack) that can include standard Node.js polyfill packages, you may need to install those polyfill packages, and your bundler needs to support bundling WebAssembly (e.g. Webpack v4+).
+This library works in modern browsers that support `CompressionStream`/`DecompressionStream` (all current browsers). Gzip and deflate are handled natively via these APIs, with no polyfills required. Brotli will also use native `CompressionStream('br')` where supported, falling back to `brotli-wasm`.
 
-In Webpack v4 this should all work automatically. In Webpack v5 and most other builders this will require explicit dependencies and configuration. See this package's own [test webpack config](./karma.conf.js#L14-L44) and [dev dependencies](./package.json) for a working example.
+Brotli and Zstandard use WebAssembly fallbacks (`brotli-wasm` and `zstd-codec`) when native implementations aren't available. These are loaded on-demand. Your bundler must support WebAssembly (e.g. Webpack v4+).
 
-Brotli and Zstandard are only supported in runtime environments that support WebAssembly. All WebAssembly packages are loaded on-demand and only when native methods (e.g. Node's `zlib.brotli*`) are not available.
+A `zlib` polyfill (e.g. `browserify-zlib`) is not required in most environments and can generally be omitted. See this package's own [test webpack config](./karma.conf.js) for a working browser bundling example.
